@@ -332,19 +332,41 @@
       setMsg("");
     }
 
+    /**
+     * Read the event table, separating three cases that were previously one.
+     *
+     * An entirely empty row is an unused slot from Add event and is ignored
+     * quietly. A row with some fields filled and others blank is almost
+     * certainly a mistake, and was previously dropped in silence: the forecast
+     * ran on the remaining rows and never mentioned that an event the user
+     * believed they had entered was excluded. Those rows are now reported and
+     * marked, because a forecast computed on less data than the operator thinks
+     * they supplied is the worst kind of wrong answer.
+     */
     function readEvents() {
-      var out = [];
+      var complete = [], partial = [];
       Array.prototype.forEach.call(el.rows.querySelectorAll("tr"), function (tr) {
-        var row = {};
-        var ok = true;
-        Array.prototype.forEach.call(tr.querySelectorAll("input"), function (input) {
-          var v = parseFloat(input.value);
-          if (!isFinite(v)) { ok = false; }
+        var row = {}, filled = 0, blank = 0;
+        var inputs = tr.querySelectorAll("input");
+        Array.prototype.forEach.call(inputs, function (input) {
+          input.classList.remove("is-bad");
+          var raw = input.value.trim();
+          var v = parseFloat(raw);
+          if (raw === "" || !isFinite(v)) { blank += 1; } else { filled += 1; }
           row[input.dataset.key] = v;
         });
-        if (ok) { out.push(row); }
+        if (blank === 0) {
+          complete.push(row);
+        } else if (filled > 0) {
+          partial.push(tr);
+          Array.prototype.forEach.call(inputs, function (input) {
+            if (input.value.trim() === "" || !isFinite(parseFloat(input.value))) {
+              input.classList.add("is-bad");
+            }
+          });
+        }
       });
-      return out;
+      return { events: complete, partial: partial };
     }
 
     /* ---- running it ------------------------------------------------------ */
@@ -372,7 +394,14 @@
 
     function run() {
       setMsg("");
-      var events = readEvents();
+      var read = readEvents();
+      var events = read.events;
+      if (read.partial.length) {
+        setMsg(read.partial.length + (read.partial.length === 1 ? " row is" : " rows are")
+          + " incomplete. Fill the highlighted fields or remove the row, otherwise the "
+          + "event is left out of the forecast.", true);
+        return;
+      }
       if (events.length < bundle.min_foreshocks) {
         setMsg("The model needs at least " + bundle.min_foreshocks
           + " complete events in the window. Fill in or remove any partial rows.", true);

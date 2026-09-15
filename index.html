@@ -747,6 +747,10 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 .events td { padding: 5px 5px 5px 0; }
 .events input { padding: 8px 9px; font-size: .82rem; border-radius: var(--r-xs); }
 .events td:last-child, .events th:last-child { width: 34px; padding-right: 0; }
+.events input.is-bad {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 .rowdel {
   width: 30px; height: 30px; border-radius: var(--r-xs); cursor: pointer;
   border: 1px solid var(--line-2); background: transparent; color: var(--mute);
@@ -1481,6 +1485,6 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   }
 })();
 </script>
-<script src="app.js?v=477a993b82"></script>
+<script src="app.js?v=850d4a360d"></script>
 </body>
 </html>
