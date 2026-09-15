@@ -265,26 +265,35 @@ def main() -> None:
           f"{len(vectors)} verification vectors")
 
     export_catalogue(cat_sorted)
-    stamp_script_versions()
+    stamp_asset_versions()
 
 
-def stamp_script_versions() -> None:
-    """Version the script tags by content hash.
+def stamp_asset_versions() -> None:
+    """Re-sync every static asset reference in the page against the real files.
 
-    index.html, app.js and forecast.js are all served with max-age=600, so a
-    returning visitor can run yesterday's JavaScript against today's data. A
-    hash in the query string makes each deploy a distinct URL, which is the only
-    reliable way to retire a cached script. It is derived from the file content
-    rather than a counter, so it cannot drift out of step with what shipped.
+    Two jobs that both have to happen on every build or they silently rot.
+
+    Versioning: index.html, the scripts and the figures are all served with
+    max-age=600, so a returning visitor can run yesterday's JavaScript or look
+    at yesterday's chart. A content hash in the query string makes each build a
+    distinct URL, which is the only dependable way to retire a cached asset.
+    Deriving it from the bytes means it cannot drift from what shipped.
+
+    Dimensions: the width and height attributes reserve space before an image
+    loads, so a stale pair causes exactly the layout shift they exist to
+    prevent. Regenerating a figure changes its pixel size, so they are read back
+    from the files rather than trusted.
     """
     import hashlib
     import re
+    import struct
 
     page = ROOT / "index.html"
     if not page.exists():
         return
     html = page.read_text()
-    changed = []
+    notes = []
+
     for name in ("forecast.js", "app.js"):
         target = ROOT / name
         if not target.exists():
@@ -293,36 +302,25 @@ def stamp_script_versions() -> None:
         pattern = re.compile(r'src="' + re.escape(name) + r'(?:\?v=[0-9a-f]+)?"')
         html, n = pattern.subn(f'src="{name}?v={digest}"', html)
         if n:
-            changed.append(f"{name}={digest}")
+            notes.append(f"{name}={digest}")
+
+    def refresh_image(match):
+        src = match.group("src")
+        target = ROOT / src
+        if not target.exists():
+            return match.group(0)
+        raw = target.read_bytes()
+        width, height = struct.unpack(">II", raw[16:24])
+        digest = hashlib.sha256(raw).hexdigest()[:10]
+        notes.append(f"{src.split('/')[-1]}={width}x{height}")
+        return (f'src="{src}?v={digest}" width="{width}" height="{height}"')
+
+    html, images = re.subn(
+        r'src="(?P<src>figures/[^"?]+)(?:\?v=[0-9a-f]+)?"\s+width="\d+"\s+height="\d+"',
+        refresh_image, html)
+
     page.write_text(html)
-    print("Stamped script versions: " + ", ".join(changed))
-
-
-def export_catalogue(cat_sorted) -> None:
-    """Ship the cleaned catalogue so the browser can compute regional context.
-
-    Four of the 22 features count the days since the last large regional
-    earthquake, and the beta statistic needs a background rate over the
-    preceding year. Neither can be derived from the handful of events a user
-    types into a form, so the page needs the surrounding record to work at all.
-
-    Packed as four parallel flat arrays rather than an array of objects: same
-    numbers, roughly a fifth of the bytes, and the browser reads it straight
-    into typed arrays.
-    """
-    origin = cat_sorted["datetime"].iloc[0]
-    t_days = (cat_sorted["datetime"] - origin).dt.total_seconds().to_numpy() / 86400.0
-    payload = {
-        "origin": origin.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "n": int(len(cat_sorted)),
-        "t": np.round(t_days, 8).tolist(),
-        "lat": np.round(cat_sorted["Latitude"].to_numpy(float), 5).tolist(),
-        "lon": np.round(cat_sorted["Longitude"].to_numpy(float), 5).tolist(),
-        "mag": np.round(cat_sorted["Magnitude"].to_numpy(float), 2).tolist(),
-    }
-    CATALOGUE_OUT.write_text(json.dumps(payload, separators=(",", ":")))
-    print(f"Wrote {CATALOGUE_OUT}  ({CATALOGUE_OUT.stat().st_size / 1024:,.0f} KB), "
-          f"{payload['n']:,} events")
+    print(f"Synced {images} images and stamped assets: " + ", ".join(notes))
 
 
 def occurrence_block(ea) -> dict:
