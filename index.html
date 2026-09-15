@@ -1,3 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Forecasting mainshock magnitudes from PHIVOLCS foreshock sequences: a 1907 to 2026 catalogue, sixteen models compared, and an interactive panel that runs four of them in the browser.">
 <title>Foreshock to Mainshock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -173,11 +180,19 @@ p { margin: 0; max-width: 64ch; }
   transition: color .18s ease;
 }
 .nav__links a:hover { color: var(--ink); }
-@media (max-width: 720px) { .nav__links a.is-optional { display: none; } }
+/* Nav must hold one line at every width, and the tight band is just above each
+   breakpoint where something reappears. Measured worst cases: full mark with
+   six links needs 604px and clears only 5px at 721px, so the mark stays short
+   until 860px; optional links drop at 720px. */
 .nav__mark .short { display: none; }
-@media (max-width: 560px) {
+@media (max-width: 860px) {
   .nav__mark .full { display: none; }
   .nav__mark .short { display: inline; }
+}
+@media (max-width: 720px) {
+  .nav__links a.is-optional { display: none; }
+}
+@media (max-width: 560px) {
   .nav__links a.is-secondary { display: none; }
   .nav__links { gap: 18px; }
 }
@@ -648,13 +663,14 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   .hero__grid { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
-
+</head>
+<body>
 <header class="nav">
   <div class="shell nav__in">
     <a class="nav__mark" href="#top"><span class="full">PHIVOLCS Foreshock Study</span><span class="short">Foreshock Study</span></a>
     <nav class="nav__links">
-      <a href="#record">Record</a>
-      <a href="#method">Method</a>
+      <a class="is-secondary" href="#record">Record</a>
+      <a class="is-secondary" href="#method">Method</a>
       <a class="is-secondary" href="#results">Results</a>
       <a href="#lab">Run it</a>
       <a class="is-optional" href="#limits">Limits</a>
@@ -1548,3 +1564,6 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   })();
 
 </script>
+
+</body>
+</html>

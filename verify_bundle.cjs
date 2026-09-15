@@ -8,10 +8,10 @@
  */
 const fs = require("fs");
 const path = require("path");
-const F = require("./landing/forecast.js");
+const F = require("./forecast.js");
 
-const bundle = JSON.parse(fs.readFileSync(path.join(__dirname, "landing/model_bundle.json"), "utf8"));
-const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, "landing/catalogue.json"), "utf8"));
+const bundle = JSON.parse(fs.readFileSync(path.join(__dirname, "model_bundle.json"), "utf8"));
+const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, "catalogue.json"), "utf8"));
 bundle.vectors = JSON.parse(fs.readFileSync(path.join(__dirname, "verification_vectors.json"), "utf8")).vectors;
 
 const FEAT_TOL = 1e-6;

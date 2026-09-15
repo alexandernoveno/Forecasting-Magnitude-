@@ -23,7 +23,7 @@ will occur, or when, or where.
 | Path | What it is |
 |---|---|
 | `earthquake_analysis.py` | The whole analysis in one file. 50 tables, 11 figures, one Word document. |
-| `landing/` | A deployable static site with an interactive panel that runs the models in the browser |
+| `index.html` | The landing page, served at the repository root by GitHub Pages |
 | `export_model_bundle.py` | Exports the trained models to JSON for the browser |
 | `verify_bundle.cjs` | Checks the browser reimplementation against Python |
 | `outputs/` | Generated tables, figures and the Word document |
@@ -140,15 +140,18 @@ every number in the document.
 
 ## The landing page
 
-`landing/` is a deployable static site: the study's findings plus an interactive
-panel that runs the trained models in the browser.
+The site lives at the repository root so GitHub Pages serves it at the project
+URL with no configuration: the study's findings plus an interactive panel that
+runs the trained models in the browser.
+
+**Live: https://alexandernoveno.github.io/Forecasting-Magnitude-/**
 
 | File | What it is |
 |---|---|
-| `landing/index.html` | The page. Deploy the folder to GitHub Pages or Netlify as-is. |
-| `landing/forecast.js` | Feature engineering and the four models, reimplemented in JavaScript |
-| `landing/model_bundle.json` | Random Forest, Gradient Boosting, Elastic Net and LSTM, exported |
-| `landing/catalogue.json` | The cleaned catalogue, for regional context |
+| `index.html` | The page itself |
+| `forecast.js` | Feature engineering and the four models, reimplemented in JavaScript |
+| `model_bundle.json` | Random Forest, Gradient Boosting, Elastic Net and LSTM, exported |
+| `catalogue.json` | The cleaned catalogue, for regional context |
 | `export_model_bundle.py` | Builds the two JSON files from the trained models |
 | `verify_bundle.cjs` | Checks the JavaScript against Python |
 
@@ -176,12 +179,13 @@ when, or where, and the page says so where the number appears.
 
 ## Publishing the landing page
 
-`landing/` is a plain static folder with no build step. To serve it from GitHub
-Pages, push it and set Pages to deploy from the `main` branch. To preview it
-locally:
+The site is plain static files at the repository root, with no build step.
+GitHub Pages serves it from `main` with the source set to `/ (root)`. A
+`.nojekyll` file turns Jekyll off so the files are served exactly as committed.
+To preview locally:
 
 ```bash
-python -m http.server 8000 --directory landing
+python -m http.server 8000
 ```
 
 The interactive panel fetches `model_bundle.json` and `catalogue.json`, so it

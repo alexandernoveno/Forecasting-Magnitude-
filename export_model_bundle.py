@@ -5,7 +5,8 @@ Export trained models to JSON so the landing page can run them in the browser.
 
     python export_model_bundle.py
 
-Writes landing/model_bundle.json. Imports earthquake_analysis.py rather than
+Writes model_bundle.json and catalogue.json at the repository root, which is
+also the GitHub Pages site root. Imports earthquake_analysis.py rather than
 re-deriving anything, so the exported models are the same objects the paper
 reports, fitted on the same combined training and validation partitions.
 
@@ -20,7 +21,7 @@ It also carries the preprocessing constants (log flags, training medians,
 winsorising bounds, scaler statistics) and a set of verification vectors. The
 vectors are the whole point of shipping this file: the browser recomputes the
 22 features from raw events in JavaScript, and a mismatch against the Python
-values is silent unless something checks. `verify_bundle.mjs` checks.
+values is silent unless something checks. `verify_bundle.cjs` checks.
 """
 from __future__ import annotations
 
@@ -35,8 +36,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parent
-OUT = ROOT / "landing" / "model_bundle.json"
-CATALOGUE_OUT = ROOT / "landing" / "catalogue.json"
+OUT = ROOT / "model_bundle.json"
+CATALOGUE_OUT = ROOT / "catalogue.json"
 VECTORS_OUT = ROOT / "verification_vectors.json"   # development asset, not shipped
 THRESH_ROUND = 9   # split thresholds: a flipped split is a visible error
 VALUE_ROUND = 6    # leaf values: averaged over hundreds of trees
