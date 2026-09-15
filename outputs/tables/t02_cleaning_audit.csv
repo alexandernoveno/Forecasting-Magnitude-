@@ -5,4 +5,5 @@ Epicentre inside study region,18338,0,18338,"lat 0.0-25.0, lon 110.0-140.0"
 Hypocentral depth in range,18338,0,18338,0-750 km
 At least one reported magnitude,18338,0,18338,"Ml, mb, Ms or Mw present"
 Working magnitude in range,18338,0,18338,"policy = 'hierarchy', preference Mw > Ms > Mb > Ml"
+Nearest active fault recorded,18338,0,18338,Source coordinates and distance present and non-negative
 Duplicate origins collapsed,18338,671,17667,within 1 s and 1 km

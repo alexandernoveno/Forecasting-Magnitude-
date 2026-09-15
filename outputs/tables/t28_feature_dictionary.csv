@@ -21,3 +21,8 @@
 20,T_elaps65,Time elapsed,Days since the last M 6.5 earthquake
 21,T_elaps7,Time elapsed,Days since the last M 7.0 earthquake
 22,T_elaps75,Time elapsed,Days since the last M 7.5 earthquake
+23,Dist_min,Distance to nearest fault,Closest approach to an active fault in the observation window
+24,Dist_mean,Distance to nearest fault,Mean distance to the nearest active fault
+25,Dist_std,Distance to nearest fault,Standard deviation of the fault distances
+26,Dist_wmean,Distance to nearest fault,Fault distance weighted by released energy
+27,Dist_trend,Distance to nearest fault,"Change in fault distance across the window, km per day"

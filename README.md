@@ -6,13 +6,14 @@ Loui Cris C. Atienza, Alexander Jr. R. Noveno, Joseph Lorenz B. Pajarin.
 
 A statistical analysis of the 1907 to 2026 PHIVOLCS earthquake catalogue and a
 comparison of sixteen models that forecast the magnitude of a mainshock from
-the foreshock sequence preceding it.
+the foreshock sequence preceding it. Every event carries its distance to the
+nearest active fault, measured against fault lines mapped in QGIS.
 
-**The headline result is modest and reported as such.** A Random Forest on 22
-engineered features reduces squared error by 21.4% against simply quoting the
-historical average magnitude. The typical error is still about half a magnitude
-unit. Half the field, including the convolutional network and the multilayer
-perceptron, fails to beat that average at all.
+**The headline result is modest and reported as such.** An Extra Trees ensemble
+on 27 engineered features reduces squared error by 23.6% against simply quoting
+the historical average magnitude. The typical error is still about half a
+magnitude unit. A third of the field, including the convolutional network and
+the multilayer perceptron, fails to beat that average at all.
 
 This is not a prediction system. It estimates how large a mainshock would be if
 one follows a sequence already under way, and says nothing about whether one
@@ -27,7 +28,7 @@ will occur, or when, or where.
 | `export_model_bundle.py` | Exports the trained models to JSON for the browser |
 | `verify_bundle.cjs` | Checks the browser reimplementation against Python |
 | `outputs/` | Generated tables, figures and the Word document |
-| `Earthquake Data Sets.xlsx` | The source catalogue, compiled from PHIVOLCS bulletins |
+| `Earthquake Data Sets NEW.xlsx` | The source catalogue with mapped fault distances |
 
 The analysis is one file: **`earthquake_analysis.py`**. It produces 50
 APA 7th-edition tables and 11 figures in a single Word document, plus every
@@ -98,6 +99,24 @@ numerical gradients to about 1e-6.
 
 ## Analysis decisions worth knowing
 
+**Fault distance is a separate feature group, not a rewrite of Table 1.** The
+methodology's feature table lists 22 features and does not include fault
+distance, although Data Collection names it as a selected parameter. The 22 are
+reproduced exactly as published; five more summarise how far the foreshocks sit
+from the nearest mapped fault. Three of those five rank fifth, sixth and
+seventh of 27 by permutation importance and together carry 18% of the total.
+The other two, closest approach and migration trend, score negative and measure
+nothing the model can use. The mainshock's own fault distance is deliberately
+excluded: it is a property of the event being forecast.
+
+**The supplied fault distances are used as given, and checked.** They are the
+authors' own QGIS measurement. Recomputing them from the coordinate pairs beside
+them agrees for 98.2% of events to within a kilometre; the residual grows with
+distance and is immaterial inside the 100 km observation radius. The browser
+cannot rerun a QGIS layer, so it takes the nearest of the 797 distinct source
+points the catalogue resolves to, which reproduces the mapped assignment for
+99.7% of events and is at most 0.24 km further out for the rest.
+
 **The catalogue is complete only from M 4.0.** No event in the workbook carries
 a working magnitude below 4.0 — PHIVOLCS publishes its bulletin from that
 threshold. Magnitude classes therefore begin at the catalogue's own floor rather
@@ -125,6 +144,12 @@ and scaling are refitted inside each fold from that fold's training rows only.
 as the fitted b-value approaches zero. Both transforms are monotone, so the tree
 ensembles are unaffected; without them the linear, kernel and neural models are
 driven by single pathological windows.
+
+**Extra Trees is capped at depth 10 so it can be shipped to the browser.**
+Unrestricted it reaches 13 MB of JSON and scores 0.4904; at depth 10 it is
+1.7 MB and scores 0.4922, a difference an order of magnitude inside the
+bootstrap interval on this test set. The analysis and the export are pinned to
+the same configuration so there is one number, not two.
 
 **The energy feature follows the thesis, not the literature.** Table 1 of the
 methodology gives `Energy = sqrt(Σ 10^(12 + 1.8·Mi))`. Wang et al. (2023) and
@@ -167,11 +192,16 @@ error. The verifier replays 60 held-out sequences through the browser code and
 compares against Python: 1,320 feature values and 240 predictions, failing on
 any disagreement past tolerance.
 
-Three of the four models agree with Python to floating-point noise. The random
-forest is a sum of step functions, so a feature differing in the seventh decimal
-can land on the other side of a split threshold; one flipped split in 300 trees
-moves the result by at most 2.4e-3 magnitude units, half a percent of the
-model's own error. The forest tolerance is set just above that measured bound.
+Three of the four models agree with Python to floating-point noise. Extra Trees
+does too, because its split thresholds are drawn at random inside each feature's
+range and so rarely sit next to a value being tested. The Random Forest is the
+exception: its thresholds are midpoints between adjacent observed values,
+exactly where test values cluster, so a feature differing in the seventh decimal
+can land on the other side of a split. Measured over the 60 sequences, that
+moves its forecast by at most 1.04e-2 magnitude units and changes the
+two-decimal figure on the page in 3 cases of 60. That is 2% of the model's own
+RMSE and well inside the plus or minus half a unit the page already reports, so
+it is bounded and documented rather than engineered away.
 
 The panel forecasts the magnitude a mainshock would reach given a foreshock
 sequence already under way. It does not forecast whether one will happen, or

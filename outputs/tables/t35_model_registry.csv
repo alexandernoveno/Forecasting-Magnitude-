@@ -2,7 +2,7 @@ Model,Family,Input representation,Key settings
 Climatology (training mean),Baseline,None (constant),Predicts the training-set mean for every sequence
 Persistence (previous mainshock),Baseline,Previous target,Reuses the magnitude of the preceding mainshock
 Random Forest,Tree ensemble (bagging),22 engineered features,"n_estimators=300, max_depth=8, min_samples_leaf=1, max_features=0.5"
-Extra Trees,Tree ensemble (bagging),22 engineered features,"n_estimators=600, fully randomised splits"
+Extra Trees,Tree ensemble (bagging),22 engineered features,"n_estimators=200, max_depth=10, fully randomised splits"
 Gradient Boosting,Tree ensemble (boosting),22 engineered features,"n_estimators=400, lr=0.05, max_depth=3, subsample=0.8"
 Histogram GB,Tree ensemble (boosting),22 engineered features,"max_iter=400, lr=0.05, max_depth=6"
 Support Vector Regression,Kernel method,22 engineered features,"RBF kernel, C=10, ε=0.05, standardised inputs"

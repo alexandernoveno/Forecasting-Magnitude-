@@ -18,18 +18,25 @@ const FEAT_TOL = 1e-6;
 
 /* Per-model prediction tolerance.
  *
- * Three of the four models are smooth functions of the feature vector, so they
- * agree to floating-point noise. A random forest is not smooth: it is a sum of
- * step functions, and a feature value that differs from Python's in the seventh
- * decimal can land on the other side of a split threshold. One flipped split in
- * one tree moves the ensemble mean by at most (leaf spread) / (number of trees),
- * about 0.7 / 300, and measurement across 60 vectors puts the worst case at
- * 2.4e-3 magnitude units, which is half a percent of the model's own RMSE.
+ * Elastic Net and the LSTM are smooth functions of the feature vector and agree
+ * with Python to floating-point noise. Extra Trees does too, because its split
+ * thresholds are drawn at random inside each feature's range and so almost
+ * never sit next to a value being tested.
  *
- * The forest tolerance is set just above that measured bound: loose enough to
- * accept threshold straddling, tight enough that a genuine traversal bug, which
- * would be off by tenths, still fails. */
-const PRED_TOL = { random_forest: 5e-3, gradient_boosting: 1e-5, elastic_net: 1e-5, lstm: 1e-5 };
+ * A Random Forest is different: its thresholds are midpoints between adjacent
+ * observed training values, exactly where test values cluster. A feature that
+ * differs from Python's in the seventh decimal can therefore land on the other
+ * side of a split, and one flipped split in 300 depth-8 trees moves the mean by
+ * a few thousandths. Measured over 60 held-out sequences: median 2.5e-7, worst
+ * 1.04e-2, and the two-decimal forecast shown on the page differs in 3 of 60
+ * cases. That is 2% of the model's own RMSE of 0.50, well inside the plus or
+ * minus half a unit the page already reports, so it is accepted and bounded
+ * rather than engineered away.
+ *
+ * The bound is set just above the measured worst case: loose enough to accept
+ * threshold straddling, tight enough that a real traversal bug, which would be
+ * off by tenths, still fails. */
+const PRED_TOL = { random_forest: 1.5e-2, extra_trees: 1e-5, elastic_net: 1e-5, lstm: 1e-5 };
 
 let featFail = 0, predFail = 0, checked = 0;
 const worst = { feature: { name: null, diff: 0 }, model: { name: null, diff: 0 } };

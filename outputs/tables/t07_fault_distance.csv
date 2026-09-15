@@ -1,0 +1,10 @@
+Quantity,Value
+Events with a nearest-fault distance,"17,667"
+Distinct fault source points,797
+"Distance, M (SD) in km",59.82 (75.26)
+"Distance, median in km",32.98
+Distance range in km,0.18 to 617.26
+Events within 25 km of a fault,"7,024 (39.8%)"
+Median recomputation difference in km,0.0557
+Maximum recomputation difference in km,5.323
+Agreement within 1 km,"17,354 of 17,667 (98.23%)"

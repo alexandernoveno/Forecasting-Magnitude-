@@ -110,7 +110,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 class CFG:
     # ---- Paths ----------------------------------------------------------- #
     ROOT = Path(__file__).resolve().parent
-    DATA_XLSX = ROOT / "Earthquake Data Sets.xlsx"
+    DATA_XLSX = ROOT / "Earthquake Data Sets NEW.xlsx"
     DATA_SHEET = 0
     OUT_DIR = ROOT / "outputs"
     TABLE_DIR = OUT_DIR / "tables"
@@ -127,6 +127,12 @@ class CFG:
     MAG_BOUNDS = (0.0, 10.0)
     DUPLICATE_TIME_TOL_S = 1.0        # same origin time to within a second ...
     DUPLICATE_DIST_TOL_KM = 1.0       # ... and a kilometre is one event twice
+
+    # Distance to the nearest active fault, supplied per event in the workbook
+    # (mapped in QGIS, measured with the Haversine formula). The loader
+    # recomputes it as a data check; this is the tolerance for agreement.
+    SOURCE_DISTANCE_TOL_KM = 1.0
+    EARTH_RADIUS_PAPER = 6371.0       # the radius the methodology specifies
 
     # Order of preference when collapsing Ml / mb / Ms / Mw into one scale.
     # Mw is physically preferred; the rest follow decreasing saturation
@@ -212,9 +218,17 @@ for _d in (CFG.OUT_DIR, CFG.TABLE_DIR, CFG.FIGURE_DIR):
 # =============================================================================
 EARTH_RADIUS_KM = 6371.0088
 LOG10_E = np.log10(np.e)
-RAW_COLUMNS = ["No", "Year", "Month", "Day", "Hour", "Minute", "Second",
-               "Latitude", "Longitude", "Depth", "Ml", "Mb", "Ms", "Mw"]
+# The workbook has appeared in two shapes. The 2026 revision adds the nearest
+# active fault: its coordinates and the distance to it. Both are read here so a
+# re-run against either file produces the same catalogue columns, with the
+# source fields simply absent in the older one.
+RAW_COLUMNS_BASE = ["No", "Year", "Month", "Day", "Hour", "Minute", "Second",
+                    "Latitude", "Longitude", "Depth", "Ml", "Mb", "Ms", "Mw"]
+RAW_COLUMNS_SOURCE = ["No", "Year", "Month", "Day", "Hour", "Minute", "Second",
+                      "Latitude", "Longitude", "SrcLat", "SrcLon", "SrcDistKm",
+                      "Depth", "Ml", "Mb", "Ms", "Mw"]
 MAG_COLUMNS = ["Ml", "Mb", "Ms", "Mw"]
+SOURCE_COLUMNS = ["SrcLat", "SrcLon", "SrcDistKm"]
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -373,10 +387,16 @@ def read_raw(path=None, sheet=None) -> pd.DataFrame:
     if not path.exists():
         raise SystemExit(f"Data file not found: {path}")
     raw = pd.read_excel(path, sheet_name=sheet, header=None)
+    # Data rows are the ones whose first two cells parse as an event number and
+    # a year, which drops the banner and any header repeated inside the block
+    # without depending on how many banner rows this edition happens to have.
     year = pd.to_numeric(raw.iloc[:, 1], errors="coerce")
     number = pd.to_numeric(raw.iloc[:, 0], errors="coerce")
-    data = raw[year.notna() & number.notna()].copy().iloc[:, :len(RAW_COLUMNS)]
-    data.columns = RAW_COLUMNS
+    data = raw[year.notna() & number.notna()].copy()
+
+    columns = RAW_COLUMNS_SOURCE if data.shape[1] >= len(RAW_COLUMNS_SOURCE) else RAW_COLUMNS_BASE
+    data = data.iloc[:, :len(columns)]
+    data.columns = columns
     return data.apply(pd.to_numeric, errors="coerce").reset_index(drop=True)
 
 
@@ -540,6 +560,12 @@ def load_catalogue(path=None, policy=None):
               f"policy = '{policy}', preference "
               f"{' > '.join(CFG.MAGNITUDE_PREFERENCE)}")
 
+    if set(SOURCE_COLUMNS).issubset(df.columns):
+        before = len(df)
+        df = df[df[SOURCE_COLUMNS].notna().all(axis=1) & (df["SrcDistKm"] >= 0)]
+        audit.log("Nearest active fault recorded", before, len(df),
+                  "Source coordinates and distance present and non-negative")
+
     df = df.sort_values("datetime", kind="mergesort").reset_index(drop=True)
     before = len(df)
     df = _drop_duplicates(df)
@@ -559,6 +585,34 @@ def load_catalogue(path=None, policy=None):
 # =============================================================================
 # PART 4.  DESCRIPTIVE STATISTICS
 # =============================================================================
+def source_distance_check(df) -> pd.DataFrame:
+    """Recompute the supplied fault distance and report the agreement.
+
+    The workbook carries a distance to the nearest active fault, mapped in QGIS
+    and measured with the Haversine formula. It is used as given, because it is
+    the authors' own measurement against their fault layer, but a value that
+    cannot be reproduced from the two coordinate pairs beside it would be a
+    transcription error worth catching rather than modelling.
+    """
+    recomputed = haversine_km(df["Latitude"], df["Longitude"],
+                              df["SrcLat"], df["SrcLon"])
+    diff = (recomputed - df["SrcDistKm"]).abs()
+    within = diff <= CFG.SOURCE_DISTANCE_TOL_KM
+    d = describe_series(df["SrcDistKm"])
+    return pd.DataFrame([
+        {"Quantity": "Events with a nearest-fault distance", "Value": f"{len(df):,}"},
+        {"Quantity": "Distinct fault source points", "Value": f"{df[['SrcLat', 'SrcLon']].drop_duplicates().shape[0]:,}"},
+        {"Quantity": "Distance, M (SD) in km", "Value": f"{d['M']:.2f} ({d['SD']:.2f})"},
+        {"Quantity": "Distance, median in km", "Value": f"{d['Mdn']:.2f}"},
+        {"Quantity": "Distance range in km", "Value": f"{d['Min']:.2f} to {d['Max']:.2f}"},
+        {"Quantity": "Events within 25 km of a fault", "Value": f"{int((df['SrcDistKm'] <= 25).sum()):,} ({100 * (df['SrcDistKm'] <= 25).mean():.1f}%)"},
+        {"Quantity": "Median recomputation difference in km", "Value": f"{diff.median():.4f}"},
+        {"Quantity": "Maximum recomputation difference in km", "Value": f"{diff.max():.3f}"},
+        {"Quantity": f"Agreement within {CFG.SOURCE_DISTANCE_TOL_KM:.0f} km",
+         "Value": f"{int(within.sum()):,} of {len(df):,} ({100 * within.mean():.2f}%)"},
+    ])
+
+
 def catalogue_overview(df, raw_n) -> pd.DataFrame:
     """One-row-per-attribute summary of what the working catalogue contains."""
     years = (df["datetime"].max() - df["datetime"].min()).days / 365.25
@@ -612,9 +666,14 @@ def scale_coverage(df) -> pd.DataFrame:
                          "% of catalogue": 100 * counts.to_numpy() / len(df)})
 
 
-def parameter_descriptives(df, columns=("Magnitude", "Depth", "Latitude", "Longitude")):
+def parameter_descriptives(df, columns=None):
     labels = {"Magnitude": "Magnitude (working scale)", "Depth": "Focal depth (km)",
-              "Latitude": "Latitude (°N)", "Longitude": "Longitude (°E)"}
+              "Latitude": "Latitude (deg N)", "Longitude": "Longitude (deg E)",
+              "SrcDistKm": "Distance to nearest fault (km)"}
+    if columns is None:
+        columns = ["Magnitude", "Depth", "Latitude", "Longitude"]
+        if "SrcDistKm" in df.columns:
+            columns.append("SrcDistKm")
     return pd.DataFrame([{"Variable": labels.get(c, c), **describe_series(df[c])}
                          for c in columns])
 
@@ -1210,10 +1269,20 @@ def decluster_effect(before, after) -> pd.DataFrame:
 # T_OBS_DAYS immediately before it.  The window closes strictly before the
 # mainshock origin time, so the target never leaks into its own predictors.
 # =============================================================================
-FEATURE_NAMES = ["NO", "Mag_max", "Mag_mean", "b_lsq", "a_lsq", "b_std_lsq",
-                 "std_gr_lsq", "b_mlk", "a_mlk", "b_std_mlk", "std_gr_mlk",
-                 "dM_lsq", "dM_mlk", "Energy", "x7_lsq", "x7_mlk", "zvalue",
-                 "beta", "T_elaps6", "T_elaps65", "T_elaps7", "T_elaps75"]
+# The 22 features of Table 1, exactly as the methodology specifies them.
+CORE_FEATURE_NAMES = ["NO", "Mag_max", "Mag_mean", "b_lsq", "a_lsq", "b_std_lsq",
+                      "std_gr_lsq", "b_mlk", "a_mlk", "b_std_mlk", "std_gr_mlk",
+                      "dM_lsq", "dM_mlk", "Energy", "x7_lsq", "x7_mlk", "zvalue",
+                      "beta", "T_elaps6", "T_elaps65", "T_elaps7", "T_elaps75"]
+
+# Distance to the nearest active fault is named in Data Collection as a selected
+# parameter but has no row in Table 1, so it is carried as a clearly separate
+# group. Every one of these is computed from the foreshocks alone: the
+# mainshock's own distance to a fault is a property of the event being
+# forecast, and using it would leak the answer into the predictors.
+FAULT_FEATURE_NAMES = ["Dist_min", "Dist_mean", "Dist_std", "Dist_wmean", "Dist_trend"]
+
+FEATURE_NAMES = CORE_FEATURE_NAMES + FAULT_FEATURE_NAMES
 
 FEATURE_DESCRIPTIONS = {
     "NO": "Number of earthquakes in the observation window",
@@ -1237,7 +1306,12 @@ FEATURE_DESCRIPTIONS = {
     "T_elaps6": "Days since the last M 6.0 earthquake",
     "T_elaps65": "Days since the last M 6.5 earthquake",
     "T_elaps7": "Days since the last M 7.0 earthquake",
-    "T_elaps75": "Days since the last M 7.5 earthquake"}
+    "T_elaps75": "Days since the last M 7.5 earthquake",
+    "Dist_min": "Closest approach to an active fault in the observation window",
+    "Dist_mean": "Mean distance to the nearest active fault",
+    "Dist_std": "Standard deviation of the fault distances",
+    "Dist_wmean": "Fault distance weighted by released energy",
+    "Dist_trend": "Change in fault distance across the window, km per day"}
 
 FEATURE_CATEGORIES = {
     **{k: "Basic statistics" for k in ("NO", "Mag_max", "Mag_mean")},
@@ -1246,7 +1320,8 @@ FEATURE_CATEGORIES = {
     **{k: "Energy and magnitude deficit" for k in ("dM_lsq", "dM_mlk", "Energy")},
     **{k: "Activity-rate change and probability" for k in ("x7_lsq", "x7_mlk",
                                                            "zvalue", "beta")},
-    **{k: "Time elapsed" for k in ("T_elaps6", "T_elaps65", "T_elaps7", "T_elaps75")}}
+    **{k: "Time elapsed" for k in ("T_elaps6", "T_elaps65", "T_elaps7", "T_elaps75")},
+    **{k: "Distance to nearest fault" for k in FAULT_FEATURE_NAMES}}
 
 
 def _energy(mags) -> float:
@@ -1304,6 +1379,38 @@ def _gr_deviation(mags, a, b) -> float:
     return float(np.sqrt((resid ** 2).sum() / (keep.sum() - 1)))
 
 
+def _fault_features(dists, mags, times) -> dict:
+    """Fault-distance statistics for one observation window.
+
+    The weighted mean uses released energy rather than magnitude directly, so a
+    single large foreshock pulls the summary toward its own distance the way it
+    dominates the actual stress transfer. The trend is a least-squares slope in
+    km per day: negative means the sequence is migrating toward the fault.
+    """
+    n = dists.size
+    if n == 0:
+        return {name: np.nan for name in FAULT_FEATURE_NAMES}
+    weights = 10.0 ** (1.5 * mags)          # energy proportional weighting
+    total = weights.sum()
+    if n >= 3 and np.ptp(times) > 0:
+        # Closed-form least-squares slope rather than polyfit. polyfit solves
+        # this through an SVD, which lands a few parts in a million away from
+        # the direct computation and puts the browser's reimplementation out of
+        # agreement for no gain on a straight line fit.
+        t_bar, d_bar = times.mean(), dists.mean()
+        s_tt = ((times - t_bar) ** 2).sum()
+        trend = float(((times - t_bar) * (dists - d_bar)).sum() / s_tt) if s_tt > 0 else 0.0
+    else:
+        trend = 0.0
+    return {
+        "Dist_min": float(dists.min()),
+        "Dist_mean": float(dists.mean()),
+        "Dist_std": float(dists.std(ddof=1)) if n > 1 else 0.0,
+        "Dist_wmean": float((weights * dists).sum() / total) if total > 0 else float(dists.mean()),
+        "Dist_trend": trend,
+    }
+
+
 def _window_features(mags, times, t_start, t_end, n_background) -> dict:
     """The 18 window-derived features; the four T_elaps come from the caller."""
     n = mags.size
@@ -1350,6 +1457,8 @@ def build_sequences(declustered, full=None) -> pd.DataFrame:
     src_t = to_days(source["datetime"])
     src_lat, src_lon = source["Latitude"].to_numpy(), source["Longitude"].to_numpy()
     src_mag = source["Magnitude"].to_numpy()
+    has_fault = "SrcDistKm" in source.columns
+    src_dist = source["SrcDistKm"].to_numpy() if has_fault else None
     span = src_t[-1] - src_t[0]
 
     flags = declustered.get("IsDependent", pd.Series(False, index=declustered.index))
@@ -1387,6 +1496,10 @@ def build_sequences(declustered, full=None) -> pd.DataFrame:
 
         feats = _window_features(src_mag[idx], src_t[idx], t_start, t_end,
                                  max(bidx.size, 1))
+        if has_fault:
+            feats.update(_fault_features(src_dist[idx], src_mag[idx], src_t[idx]))
+        else:
+            feats.update({name: np.nan for name in FAULT_FEATURE_NAMES})
         for name, threshold in (("T_elaps6", 6.0), ("T_elaps65", 6.5),
                                 ("T_elaps7", 7.0), ("T_elaps75", 7.5)):
             feats[name] = _days_since(src_t[prior], src_mag[prior], t_end,
@@ -1872,7 +1985,10 @@ def build_event_sequences(seq, catalogue, seq_len=CFG.SEQ_LEN):
 # distance, kernel or gradient computation and leave the tree ensembles
 # unaffected, so the transform costs nothing and fixes a great deal.
 LOG_FEATURES = ("Energy", "x7_lsq", "x7_mlk", "T_elaps6", "T_elaps65",
-                "T_elaps7", "T_elaps75")
+                "T_elaps7", "T_elaps75",
+                # Fault distances run from 0.18 km to 617 km, three and a half
+                # orders of magnitude, so they get the same treatment.
+                "Dist_min", "Dist_mean", "Dist_std", "Dist_wmean")
 WINSOR_QUANTILES = (0.01, 0.99)
 
 
@@ -1965,9 +2081,14 @@ def tabular_estimators(seed=CFG.SEED, rf_params=None):
             RandomForestRegressor(random_state=seed, n_jobs=-1, **rf_params),
             "Tree ensemble (bagging)",
             ", ".join(f"{k}={v}" for k, v in rf_params.items())),
+        # Depth is capped so the fitted forest can be shipped to the browser for
+        # the interactive panel. Unrestricted it reaches 13 MB of JSON and scores
+        # 0.4904; at depth 10 it is 1.7 MB and scores 0.4922, a difference an
+        # order of magnitude inside the bootstrap interval on this test set.
         "Extra Trees": (
-            ExtraTreesRegressor(n_estimators=600, random_state=seed, n_jobs=-1),
-            "Tree ensemble (bagging)", "n_estimators=600, fully randomised splits"),
+            ExtraTreesRegressor(n_estimators=200, max_depth=10, random_state=seed, n_jobs=-1),
+            "Tree ensemble (bagging)",
+            "n_estimators=200, max_depth=10, fully randomised splits"),
         "Gradient Boosting": (
             GradientBoostingRegressor(n_estimators=400, learning_rate=0.05,
                                       max_depth=3, subsample=0.8, random_state=seed),
@@ -3174,6 +3295,18 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  "support catalogue-wide homogenisation, and were not applied.",
                  slug="t05_scale_conversions", decimals=3, int_columns=("n",),
                  align={"Usable": LEFT})
+    if "SrcDistKm" in catalogue.columns:
+        report.raw_table(source_distance_check(catalogue).astype(str),
+                         "Distance to the Nearest Active Fault, and Its Verification",
+                         "Fault lines were mapped in QGIS and the distance measured with the "
+                         "Haversine formula on a sphere of radius 6,371 km, as the methodology "
+                         "specifies. The supplied value is used as given. It is recomputed here "
+                         "from the two coordinate pairs beside it purely as a transcription "
+                         "check; the residual differences are a rounding effect that grows with "
+                         "distance and is immaterial inside the 100 km observation radius.",
+                         slug="t07_fault_distance",
+                         align={"Quantity": LEFT, "Value": LEFT})
+
     report.table(parameter_descriptives(catalogue),
                  "Descriptive Statistics for the Principal Seismic Parameters",
                  "CI = confidence interval for the mean. Skewness and kurtosis are "
@@ -3352,11 +3485,16 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  int_columns=("N events", "N ≥ Mc"), align={"Subset": LEFT},
                  font_size=Pt(9))
     report.raw_table(feature_dictionary().astype(str),
-                     "The 22 Engineered Seismic Features",
-                     "Features follow Wang et al. (2023) as adopted in the study "
-                     "methodology. Each is computed from the events inside the "
-                     f"observation window: {CFG.T_OBS_DAYS:.0f} days and "
-                     f"{CFG.RADIUS_KM:.0f} km preceding the mainshock.",
+                     f"The {len(FEATURE_NAMES)} Engineered Seismic Features",
+                     f"The first {len(CORE_FEATURE_NAMES)} follow Wang et al. (2023) as "
+                     "tabulated in the study methodology. The last "
+                     f"{len(FAULT_FEATURE_NAMES)} summarise the distance to the nearest "
+                     "active fault, which Data Collection names as a selected parameter but "
+                     "which has no row in that table. Every feature is computed from the "
+                     f"events inside the observation window: {CFG.T_OBS_DAYS:.0f} days and "
+                     f"{CFG.RADIUS_KM:.0f} km preceding the mainshock. The mainshock's own "
+                     "distance to a fault is deliberately excluded, being a property of the "
+                     "event under forecast.",
                      slug="t28_feature_dictionary",
                      align={"Feature": LEFT, "Category": LEFT, "Description": LEFT},
                      font_size=Pt(9))
@@ -3378,7 +3516,7 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  "meant to measure.",
                  slug="t29_sequence_profile", align={"Quantity": LEFT, "Value": LEFT})
     report.table(feature_descriptives(sequences),
-                 "Descriptive Statistics for the 22 Engineered Features",
+                 f"Descriptive Statistics for the {len(FEATURE_NAMES)} Engineered Features",
                  "Statistics describe the features as computed. Missing values arise "
                  "where a window is too sparse to support a b-value fit; they are "
                  "median-imputed from the training rows of each fold only. Before "

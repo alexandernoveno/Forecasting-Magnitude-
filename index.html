@@ -687,7 +687,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
       <div class="hero__copy">
         <p class="eyebrow">Undergraduate thesis, 2026</p>
         <h1>Can foreshocks forecast <span class="q">the mainshock?</span></h1>
-        <p class="lede">A 119-year PHIVOLCS catalogue, 16 forecasting models, and an honest account of how little signal foreshocks carry.</p>
+        <p class="lede">A 119-year PHIVOLCS catalogue, mapped fault distances, 16 models, and an honest account of how little signal foreshocks carry.</p>
         <div class="cta-row">
           <a class="btn btn--primary" href="#results">Read the results</a>
           <a class="btn btn--ghost" href="#method">How it works</a>
@@ -717,12 +717,12 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <span class="stat__k">Mainshocks with a usable foreshock window</span>
         </div>
         <div class="stat">
-          <span class="stat__v pos">21.4%</span>
+          <span class="stat__v pos">23.6%</span>
           <span class="stat__k">Error reduction over the historical average, best model</span>
         </div>
         <div class="stat">
-          <span class="stat__v">0.71</span>
-          <span class="stat__k">ROC AUC for flagging an M 6.0 event, against 0.50 for chance</span>
+          <span class="stat__v">797</span>
+          <span class="stat__k">Mapped fault points the catalogue is measured against</span>
         </div>
       </div>
     </div>
@@ -737,6 +737,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <p>The Philippine Institute of Volcanology and Seismology has logged earthquakes along the archipelago since 1907. This study uses the whole retrievable archive: every event with a complete origin time, epicentre, depth, and at least one reported magnitude.</p>
           <p>Cleaning that archive is where most of the honest work sits. The four magnitude scales in the bulletin are almost never co-reported with moment magnitude, so no defensible conversion could be fitted from this catalogue alone. Working magnitude falls back to the first available scale in the order Mw, Ms, mb, ML, and the paper says so plainly rather than implying a homogeneous record.</p>
           <p>The catalogue is also complete only from magnitude 4.0 upward, because that is where PHIVOLCS begins publishing. Fitting the Gutenberg-Richter relation above a completeness magnitude of 4.9 gives a b-value of 0.920 with a standard error of 0.014, which is what a subduction margin should produce.</p>
+          <p>Each event also carries its distance to the nearest active fault, measured against fault lines mapped in QGIS. Two in five events sit within 25 km of a mapped fault and the median distance is 33 km. Recomputing those distances from the coordinates agrees with the supplied values for 98.2% of events to within a kilometre, the residual being a rounding effect that grows with distance and is immaterial inside the 100 km observation radius.</p>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:22px;">
@@ -788,8 +789,8 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <div class="flow__row">
           <div class="flow__label">Engineer features</div>
           <div class="flow__body">
-            <p>Twenty-two quantities describe each window: basic counts and magnitudes, the Gutenberg-Richter a and b values by two estimators, seismic energy release and magnitude deficit, two rate-change statistics, and the time since the last large regional earthquake.</p>
-            <p class="flow__meta">Strongest predictor: days since the last M 6.5, then cumulative energy release</p>
+            <p>Twenty-seven quantities describe each window. Twenty-two come from the published feature table: basic counts and magnitudes, the Gutenberg-Richter a and b values by two estimators, seismic energy release and magnitude deficit, two rate-change statistics, and the time since the last large regional earthquake. Five more summarise how far the foreshocks sit from the nearest mapped fault. The mainshock's own fault distance is excluded, being a property of the event under forecast.</p>
+            <p class="flow__meta">Strongest predictors: days since the last M 6.5, then mean distance to the nearest fault</p>
           </div>
         </div>
         <div class="flow__row">
@@ -807,7 +808,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   <section class="sec sec--rule" id="results">
     <div class="shell">
       <div class="prose reveal" style="margin-bottom:34px;">
-        <h2>Tree ensembles win, and half the field cannot beat the historical average</h2>
+        <h2>Tree ensembles win, and a third of the field cannot beat the historical average</h2>
         <p class="lede">Sixteen forecasters ran on identical sequences. The result is modest, and reporting it as modest is the point.</p>
       </div>
 
@@ -829,15 +830,15 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
               </tr>
             </thead>
             <tbody>
-              <tr><td>Random Forest</td><td>0.499</td><td>0.122</td><td class="pos">+21.4%</td></tr>
-              <tr><td>Extra Trees</td><td>0.501</td><td>0.115</td><td class="pos">+20.8%</td></tr>
-              <tr><td>Gradient Boosting</td><td>0.503</td><td>0.110</td><td class="pos">+20.3%</td></tr>
+              <tr><td>Extra Trees</td><td>0.492</td><td>0.147</td><td class="pos">+23.6%</td></tr>
+              <tr><td>Random Forest</td><td>0.498</td><td>0.125</td><td class="pos">+21.6%</td></tr>
               <tr><td>ARIMAX</td><td>0.510</td><td>0.085</td><td class="pos">+18.0%</td></tr>
               <tr><td>Elastic Net</td><td>0.513</td><td>0.073</td><td class="pos">+17.0%</td></tr>
+              <tr><td>k-Nearest Neighbours</td><td>0.514</td><td>0.068</td><td class="pos">+16.6%</td></tr>
               <tr><td>GRU</td><td>0.551</td><td>-0.069</td><td class="pos">+4.2%</td></tr>
               <tr><td>LSTM</td><td>0.560</td><td>-0.103</td><td class="pos">+1.2%</td></tr>
               <tr class="is-ref"><td>Climatology baseline</td><td>0.563</td><td>-0.116</td><td>0.0%</td></tr>
-              <tr><td>Multilayer Perceptron</td><td>0.616</td><td>-0.334</td><td>-19.5%</td></tr>
+              <tr><td>Multilayer Perceptron</td><td>0.585</td><td>-0.206</td><td>-8.0%</td></tr>
               <tr><td>1D-CNN</td><td>0.675</td><td>-0.606</td><td>-43.9%</td></tr>
             </tbody>
           </table>
@@ -845,11 +846,13 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 
         <div class="prose">
           <h3>What the numbers say</h3>
-          <p>A Random Forest on the 22 engineered features cuts squared error by 21.4% against simply quoting the historical average magnitude. That is real skill, and it is small. In magnitude units the typical error is still about half a unit, which is the difference between a tremor and a damaging event.</p>
+          <p>An Extra Trees ensemble on the 27 engineered features cuts squared error by 23.6% against simply quoting the historical average magnitude. That is real skill, and it is small. In magnitude units the typical error is still about half a unit, which is the difference between a tremor and a damaging event.</p>
           <h3>The recurrent networks do not earn their complexity</h3>
           <p>The GRU and the LSTM land just ahead of the baseline, at 4.2% and 1.2% skill, and every tree ensemble beats them by a wide margin. ARIMAX, a classical time-series model the original methodology never mentions, outperforms all of them. With 428 training sequences of ten timesteps each there is not enough data for a recurrent architecture to pay for its parameters.</p>
+          <h3>Fault distance earns its place</h3>
+          <p>Adding the distance from each foreshock to the nearest mapped fault lifted the best model from 21.4% to 23.6% skill. Three of the five fault features rank fifth, sixth and seventh of 27 by permutation importance, together carrying 18% of the total. The other two measure nothing the model can use.</p>
           <h3>Where the signal actually lives</h3>
-          <p>Treating the forecast as an alarm for magnitude 6.0 gives an ROC AUC of 0.714 against 0.50 for chance. The model ranks dangerous sequences better than coin-flipping, even though its point forecasts are blunt.</p>
+          <p>Treating the forecast as an alarm for magnitude 6.0 gives an ROC AUC of 0.699 against 0.50 for chance. The model ranks dangerous sequences better than coin-flipping, even though its point forecasts are blunt.</p>
         </div>
       </div>
     </div>
@@ -860,7 +863,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
     <div class="shell">
       <div class="prose reveal">
         <h2>Run the model on a foreshock sequence</h2>
-        <p class="lede">The same four trained models from the paper, running in your browser on the events you give them.</p>
+        <p class="lede">Four trained models running in your browser on the events you give them, fault distances included.</p>
       </div>
 
       <div class="lab__grid">
@@ -895,7 +898,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
                   <input type="date" id="when" value="2024-06-15">
                 </div>
               </div>
-              <p class="help">The epicentre of the sequence and the moment you are forecasting from. Regional history is read from the catalogue at that point.</p>
+              <p class="help">The epicentre of the sequence and the moment you are forecasting from. Regional history and the distance to the nearest mapped fault are both resolved from the catalogue at that point.</p>
             </div>
 
             <fieldset class="fieldset" style="margin-top:18px;">
@@ -963,6 +966,11 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <span class="tag">Detection, not seismicity</span>
           <h3>The record grew with the network</h3>
           <p>Recorded events rise sharply through the 1970s and after, tracking the expansion of the monitoring network rather than a change in the ground. Any temporal trend in the catalogue confounds the two.</p>
+        </div>
+        <div>
+          <span class="tag">One fault layer</span>
+          <h3>Fault distance is only as good as the map</h3>
+          <p>Distances are measured to fault lines digitised in QGIS, and the browser resolves a distance by taking the nearest of the 797 points the catalogue uses. That reproduces the mapped assignment for 99.7% of events and is at most 0.24 km further out for the rest, but a fault absent from the layer is invisible to the model.</p>
         </div>
         <div>
           <span class="tag">Thin data</span>

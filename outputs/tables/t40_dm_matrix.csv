@@ -1,6 +1,6 @@
-Model,Random Forest,Extra Trees,Gradient Boosting,ARIMAX,Histogram GB
-Random Forest,—,.685,.436,.885,.462
-Extra Trees,.685,—,.592,.768,.629
-Gradient Boosting,.436,.592,—,.567,.914
-ARIMAX,.885,.768,.567,—,.604
-Histogram GB,.462,.629,.914,.604,—
+Model,Extra Trees,Random Forest,ARIMAX,Elastic Net,k-Nearest Neighbours
+Extra Trees,—,.540,.828,.984,.725
+Random Forest,.540,—,.944,.715,.488
+ARIMAX,.828,.944,—,.513,.486
+Elastic Net,.984,.715,.513,—,.639
+k-Nearest Neighbours,.725,.488,.486,.639,—

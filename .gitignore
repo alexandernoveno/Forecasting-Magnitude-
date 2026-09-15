@@ -2,11 +2,14 @@
 # unsubmitted thesis to a public repository risks it being indexed and later
 # flagged against the author's own submitted copy by similarity checkers.
 Earthquake Forecasting Machine Learning.pdf
+A MACHINE LEARNING MODEL FOR FORECASTING MAINSHOCK MAGNITUDES USING PHIVOLCS FORESHOCKS DATA NEW.pdf
 
 # The earlier multi-file version of the same pipeline. earthquake_analysis.py
 # supersedes it; keeping both in the repository would ship two implementations
 # of the same analysis.
 analysis/
+
+Earthquake Data Sets.xlsx
 
 # Python
 __pycache__/
