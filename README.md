@@ -25,6 +25,7 @@ will occur, or when, or where.
 |---|---|
 | `earthquake_analysis.py` | The whole analysis in one file. 50 tables, 11 figures, one Word document. |
 | `index.html` | The landing page, served at the repository root by GitHub Pages |
+| `app.js` | Hero drum chart and the forecast panel behaviour |
 | `export_model_bundle.py` | Exports the trained models to JSON for the browser |
 | `verify_bundle.cjs` | Checks the browser reimplementation against Python |
 | `outputs/` | Generated tables, figures and the Word document |
@@ -173,7 +174,8 @@ runs the trained models in the browser.
 
 | File | What it is |
 |---|---|
-| `index.html` | The page itself |
+| `index.html` | The page itself: markup, design tokens, interaction layer |
+| `app.js` | Hero drum chart and forecast panel |
 | `forecast.js` | Feature engineering and the four models, reimplemented in JavaScript |
 | `model_bundle.json` | Random Forest, Gradient Boosting, Elastic Net and LSTM, exported |
 | `catalogue.json` | The cleaned catalogue, for regional context |

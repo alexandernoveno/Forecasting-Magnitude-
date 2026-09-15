@@ -4,839 +4,1000 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="Forecasting mainshock magnitudes from PHIVOLCS foreshock sequences: a 1907 to 2026 catalogue, sixteen models compared, and an interactive panel that runs four of them in the browser.">
 <title>Foreshock to Mainshock</title>
+<meta name="description" content="A machine learning model that forecasts mainshock magnitude from Philippine foreshock sequences. 119 years of PHIVOLCS records, mapped fault distances, sixteen models compared, and a forecaster you can run in the browser.">
+<meta name="author" content="Loui Cris C. Atienza, Alexander Jr. R. Noveno, Joseph Lorenz B. Pajarin">
+<link rel="canonical" href="https://alexandernoveno.github.io/Forecasting-Magnitude-/">
+
+<meta property="og:type" content="article">
+<meta property="og:title" content="Foreshock to Mainshock">
+<meta property="og:description" content="119 years of PHIVOLCS records, mapped fault distances, sixteen models compared, and a forecaster you can run in the browser.">
+<meta property="og:url" content="https://alexandernoveno.github.io/Forecasting-Magnitude-/">
+<meta property="og:image" content="https://alexandernoveno.github.io/Forecasting-Magnitude-/figures/fig_epicentres.png">
+<meta property="og:image:alt" content="Epicentres of 17,667 catalogued Philippine earthquakes">
+<meta property="og:locale" content="en_PH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Foreshock to Mainshock">
+<meta name="twitter:description" content="Forecasting mainshock magnitude from Philippine foreshock sequences.">
+<meta name="twitter:image" content="https://alexandernoveno.github.io/Forecasting-Magnitude-/figures/fig_epicentres.png">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ScholarlyArticle",
+  "headline": "A Machine Learning Model for Forecasting Mainshock Magnitudes Using PHIVOLCS Foreshock Data",
+  "author": [
+    {"@type": "Person", "name": "Loui Cris C. Atienza"},
+    {"@type": "Person", "name": "Alexander Jr. R. Noveno"},
+    {"@type": "Person", "name": "Joseph Lorenz B. Pajarin"}
+  ],
+  "datePublished": "2026",
+  "inLanguage": "en",
+  "url": "https://alexandernoveno.github.io/Forecasting-Magnitude-/",
+  "keywords": "earthquake forecasting, foreshock, mainshock magnitude, PHIVOLCS, machine learning, seismology, Philippines",
+  "publisher": {
+    "@type": "CollegeOrUniversity",
+    "name": "Lyceum of the Philippines University - Cavite",
+    "department": {"@type": "Organization", "name": "College of Engineering and Architecture"}
+  },
+  "about": {
+    "@type": "Dataset",
+    "name": "PHIVOLCS earthquake catalogue, 1907 to 2026",
+    "description": "17,667 catalogued Philippine earthquakes with hypocentre, magnitude and distance to the nearest mapped active fault."
+  }
+}
+</script>
 
 <style>
 /* ===========================================================================
    Foreshock to Mainshock
-   Bulletin-column layout. Green-grey bond-paper neutral, one marker red used
-   only where a value is meaningfully positive or a limit is being flagged.
+   ---------------------------------------------------------------------------
+   Editorial layout for a research result. The neutral is a barely-green paper
+   white drawn from the catalogue's own bulletin heritage; a single seismic red,
+   the colour PHIVOLCS marks felt events with, carries every positive number and
+   every flagged limit. Nothing else is coloured, so colour always means
+   something.
    =========================================================================== */
 
-/* --- Tokens: complete light palette on bare :root ------------------------ */
+/* --- Tokens: the complete light palette lives on bare :root ---------------- */
 :root {
-  --ground:      #edefec;
-  --surface:     #f7f8f5;
-  --surface-alt: #e4e7e2;
-  --plate:       #ffffff;   /* locked in both themes: the figures are
-                               saved on white, so the plate must match them
-                               exactly or a white block shows through */
-  --ink:         #141917;
-  --ink-2:       #3b433e;
-  --mute:        #5b645e;
-  --rule:        #d2d7d1;
-  --rule-strong: #b6bdb7;
-  --accent:      #a6392a;
-  --accent-soft: #f0ded9;
-  --on-accent:   #ffffff;   /* 6.5:1 on the light-mode accent */
-  --focus:       #a6392a;
+  --ground:      #f6f7f4;
+  --surface:     #ffffff;
+  --surface-2:   #eef1ec;
+  --plate:       #ffffff;   /* figure ground, locked in both themes: the plots
+                               are saved on white and must not float on a tint */
+  --ink:         #121612;
+  --ink-2:       #454c46;
+  --mute:        #636c65;
+  --line:        #e3e7e0;
+  --line-2:      #cfd5cb;
+  --accent:      #b0392a;
+  --accent-2:    #d9604a;
+  --accent-press: #98301d;   /* white label clears 7.6:1 */
+  --accent-soft: #fbede9;
+  --on-accent:   #ffffff;
+  --focus:       #b0392a;
+  --shadow-color: 20 26 20;
 
-  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --f-body:    "IBM Plex Sans", "Segoe UI", Helvetica, Arial, sans-serif;
+  --f-display: "Sora", "Helvetica Neue", Arial, sans-serif;
+  --f-body:    "Manrope", "Segoe UI", Helvetica, Arial, sans-serif;
   --f-mono:    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --shell: 1180px;
-  --rail: 132px;
-  --gutter: clamp(20px, 4vw, 56px);
+  --shell: 1220px;
+  --gutter: clamp(20px, 5vw, 64px);
+  --step: clamp(72px, 10vw, 140px);
 
-  --step: clamp(60px, 8vw, 104px);
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 26px;
+  --r-pill: 999px;
+
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --ease-out: cubic-bezier(.22, .61, .36, 1);
+
+  --sh-sm: 0 1px 2px rgb(var(--shadow-color) / .05),
+           0 2px 6px -1px rgb(var(--shadow-color) / .05);
+  --sh-md: 0 2px 4px rgb(var(--shadow-color) / .04),
+           0 14px 32px -12px rgb(var(--shadow-color) / .14);
+  --sh-lg: 0 4px 8px rgb(var(--shadow-color) / .04),
+           0 32px 64px -20px rgb(var(--shadow-color) / .20);
 }
 
-/* System-dark: redefine tokens only, and let an explicit light choice win. */
+/* System dark. Tokens only, and an explicit light choice still wins. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ground:      #0e1211;
-    --surface:     #161a18;
-    --surface-alt: #1d2220;
-    --ink:         #e7eae6;
-    --ink-2:       #c2c9c4;
-    --mute:        #949e98;
-    --rule:        #262c29;
-    --rule-strong: #38403c;
-    --accent:      #e2705c;
-    --accent-soft: #2e1c18;
-    --on-accent:   #14100f;   /* 5.6:1 on the dark-mode accent */
-    --focus:       #e2705c;
+    --ground:      #0b0e0c;
+    --surface:     #121613;
+    --surface-2:   #181d19;
+    --ink:         #e9ede8;
+    --ink-2:       #c2c9c1;
+    --mute:        #8e978f;
+    --line:        #232925;
+    --line-2:      #333b35;
+    --accent:      #e4735d;
+    --accent-2:    #f09077;
+    --accent-press: #f5a08a;   /* dark label clears 9.3:1 */
+    --accent-soft: #2a1a16;
+    --on-accent:   #140f0e;
+    --focus:       #e4735d;
+    --shadow-color: 0 0 0;
+    --sh-sm: 0 1px 2px rgb(0 0 0 / .4);
+    --sh-md: 0 2px 4px rgb(0 0 0 / .3), 0 14px 32px -12px rgb(0 0 0 / .6);
+    --sh-lg: 0 4px 8px rgb(0 0 0 / .3), 0 32px 64px -20px rgb(0 0 0 / .7);
   }
 }
 
-/* Explicit dark choice wins over a light OS. */
+/* An explicit dark choice wins over a light operating system. */
 :root[data-theme="dark"] {
-  --ground:      #0e1211;
-  --surface:     #161a18;
-  --surface-alt: #1d2220;
-  --ink:         #e7eae6;
-  --ink-2:       #c2c9c4;
-  --mute:        #949e98;
-  --rule:        #262c29;
-  --rule-strong: #38403c;
-  --accent:      #e2705c;
-  --accent-soft: #2e1c18;
-  --on-accent:   #14100f;   /* 5.6:1 on the dark-mode accent */
-  --focus:       #e2705c;
+  --ground:      #0b0e0c;
+  --surface:     #121613;
+  --surface-2:   #181d19;
+  --ink:         #e9ede8;
+  --ink-2:       #c2c9c1;
+  --mute:        #8e978f;
+  --line:        #232925;
+  --line-2:      #333b35;
+  --accent:      #e4735d;
+  --accent-2:    #f09077;
+  --accent-press: #f5a08a;   /* dark label clears 9.3:1 */
+  --accent-soft: #2a1a16;
+  --on-accent:   #140f0e;
+  --focus:       #e4735d;
+  --shadow-color: 0 0 0;
+  --sh-sm: 0 1px 2px rgb(0 0 0 / .4);
+  --sh-md: 0 2px 4px rgb(0 0 0 / .3), 0 14px 32px -12px rgb(0 0 0 / .6);
+  --sh-lg: 0 4px 8px rgb(0 0 0 / .3), 0 32px 64px -20px rgb(0 0 0 / .7);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 96px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
 body {
   margin: 0;
   background: var(--ground);
   color: var(--ink);
   font-family: var(--f-body);
-  font-size: 16px;
-  line-height: 1.6;
+  font-size: 17px;
+  line-height: 1.62;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
+@media (min-width: 900px) { body { font-size: 18px; } }
 
-:where(a):focus-visible,
-:where(button):focus-visible {
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
-  border-radius: 2px;
+  border-radius: var(--r-xs);
 }
 
-.shell {
-  width: 100%;
-  max-width: var(--shell);
-  margin: 0 auto;
-  padding-inline: var(--gutter);
+.shell { width: 100%; max-width: var(--shell); margin-inline: auto; padding-inline: var(--gutter); }
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  background: var(--accent); color: var(--on-accent);
+  padding: 12px 20px; border-radius: 0 0 var(--r-sm) 0; font-weight: 600;
 }
+.skip:focus { left: 0; }
 
-/* --- Type scale ---------------------------------------------------------- */
-h1, h2, h3 {
+/* --- Type ----------------------------------------------------------------- */
+h1, h2, h3, h4 {
   font-family: var(--f-display);
   font-weight: 600;
-  letter-spacing: -0.022em;
-  line-height: 1.06;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
   text-wrap: balance;
   margin: 0;
 }
-h1 { font-size: clamp(2.05rem, 3.9vw, 2.9rem); }
-h2 { font-size: clamp(1.75rem, 3.4vw, 2.6rem); }
-h3 { font-size: clamp(1.05rem, 1.6vw, 1.25rem); letter-spacing: -0.01em; }
+h1 { font-size: clamp(2.75rem, 7.2vw, 5.4rem); letter-spacing: -0.045em; }
+h2 { font-size: clamp(2rem, 4.4vw, 3.4rem); }
+h3 { font-size: clamp(1.15rem, 1.7vw, 1.4rem); letter-spacing: -0.02em; line-height: 1.25; }
+h4 { font-size: 1.02rem; letter-spacing: -0.015em; }
 
-p { margin: 0; max-width: 64ch; }
-.lede { font-size: clamp(1.05rem, 1.5vw, 1.2rem); color: var(--ink-2); }
+p { margin: 0; max-width: 62ch; }
+.lede { font-size: clamp(1.1rem, 1.5vw, 1.32rem); line-height: 1.55; color: var(--ink-2); font-weight: 450; }
+.muted { color: var(--mute); }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.accent { color: var(--accent); }
 
 .eyebrow {
+  display: inline-flex; align-items: center; gap: 9px;
   font-family: var(--f-mono);
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.17em;
+  font-size: .72rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .15em;
   color: var(--mute);
   margin: 0;
 }
+.eyebrow::before {
+  content: ""; width: 22px; height: 1px; background: var(--line-2);
+}
 
-.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
 }
-.pos { color: var(--accent); }
 
-/* --- Navigation: one line, 66px ------------------------------------------ */
+/* --- Buttons -------------------------------------------------------------- */
+.btn {
+  --btn-bg: transparent;
+  --btn-fg: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  font-family: var(--f-body);
+  font-size: .97rem; font-weight: 600; letter-spacing: -0.01em;
+  text-decoration: none; white-space: nowrap;
+  padding: 15px 26px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  background: var(--btn-bg); color: var(--btn-fg);
+  cursor: pointer;
+  transition: transform .2s var(--ease), background .22s var(--ease),
+              border-color .22s var(--ease), box-shadow .28s var(--ease), color .22s var(--ease);
+  will-change: transform;
+}
+.btn .arw { transition: transform .26s var(--ease); }
+.btn:hover .arw { transform: translateX(4px); }
+.btn:active { transform: translateY(1px) scale(.985); }
+
+.btn--primary { --btn-bg: var(--accent); --btn-fg: var(--on-accent); box-shadow: var(--sh-md); }
+.btn--primary:hover { --btn-bg: var(--accent-press); box-shadow: var(--sh-lg); }
+.btn--ghost { border-color: var(--line-2); --btn-fg: var(--ink); background: var(--surface); }
+.btn--ghost:hover { border-color: var(--ink); box-shadow: var(--sh-sm); }
+.btn--quiet { padding: 12px 18px; font-size: .92rem; border-color: var(--line-2); background: transparent; }
+.btn--quiet:hover { border-color: var(--ink); }
+.btn--sm { padding: 12px 20px; font-size: .9rem; }
+
+/* --- Navigation ----------------------------------------------------------- */
 .nav {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  position: fixed; inset: 0 0 auto 0; z-index: 60;
+  height: 76px; display: flex; align-items: center;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition: background .35s var(--ease), border-color .35s var(--ease),
+              box-shadow .35s var(--ease), height .35s var(--ease);
+}
+.nav.is-stuck {
   height: 66px;
-  display: flex;
-  align-items: center;
-  background: var(--ground);
-  background: color-mix(in srgb, var(--ground) 88%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--ground) 82%, transparent);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border-bottom-color: var(--line);
+  box-shadow: 0 1px 24px -12px rgb(var(--shadow-color) / .30);
 }
-.nav__in {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  width: 100%;
-}
-.nav__mark {
-  font-family: var(--f-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink);
-  text-decoration: none;
+@supports not (backdrop-filter: blur(1px)) { .nav.is-stuck { background: var(--ground); } }
+
+.nav__in { display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; }
+.brand {
+  display: inline-flex; align-items: center; gap: 11px;
+  text-decoration: none; color: var(--ink);
+  font-family: var(--f-display); font-weight: 600; font-size: .98rem; letter-spacing: -0.02em;
   white-space: nowrap;
 }
-.nav__links { display: flex; align-items: center; gap: 22px; }
+.brand__mark {
+  width: 30px; height: 30px; border-radius: 9px; flex: none;
+  background: linear-gradient(145deg, var(--accent), var(--accent-2));
+  display: grid; place-items: center;
+  box-shadow: var(--sh-sm);
+}
+.brand__mark span {
+  display: block; width: 13px; height: 13px; border-radius: 3px;
+  border: 2px solid var(--on-accent); border-right-color: transparent; border-bottom-color: transparent;
+  transform: rotate(45deg) translate(1px, 1px);
+}
+@media (max-width: 420px) {
+  .brand { font-size: .86rem; gap: 9px; }
+  .brand__mark { width: 26px; height: 26px; border-radius: 8px; }
+}
+
+.nav__links { display: none; align-items: center; gap: 4px; }
+@media (min-width: 1140px) { .nav__links { display: flex; } }
 .nav__links a {
-  font-family: var(--f-mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  color: var(--mute);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: color .18s ease;
+  position: relative;
+  padding: 9px 14px; border-radius: var(--r-pill);
+  font-size: .93rem; font-weight: 500; color: var(--ink-2); text-decoration: none;
+  transition: color .2s var(--ease);
+}
+.nav__links a::after {
+  content: ""; position: absolute; left: 14px; right: 14px; bottom: 4px; height: 1.5px;
+  background: var(--accent); border-radius: 2px;
+  transform: scaleX(0); transform-origin: left; transition: transform .3s var(--ease);
 }
 .nav__links a:hover { color: var(--ink); }
-/* Nav must hold one line at every width, and the tight band is just above each
-   breakpoint where something reappears. Measured worst cases: full mark with
-   six links needs 604px and clears only 5px at 721px, so the mark stays short
-   until 860px; optional links drop at 720px. */
-.nav__mark .short { display: none; }
-@media (max-width: 860px) {
-  .nav__mark .full { display: none; }
-  .nav__mark .short { display: inline; }
-}
-@media (max-width: 720px) {
-  .nav__links a.is-optional { display: none; }
-}
-@media (max-width: 560px) {
-  .nav__links a.is-secondary { display: none; }
-  .nav__links { gap: 18px; }
-}
+.nav__links a:hover::after { transform: scaleX(1); }
 
-/* --- Hero ---------------------------------------------------------------- */
-.hero { padding-top: clamp(40px, 7vw, 82px); padding-bottom: clamp(36px, 5vw, 60px); }
+.nav__cta { display: none; }
+@media (min-width: 1140px) { .nav__cta { display: inline-flex; } }
+
+.burger {
+  display: inline-grid; place-items: center; gap: 5px;
+  width: 44px; height: 44px; padding: 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm);
+  cursor: pointer;
+}
+@media (min-width: 1140px) { .burger { display: none; } }
+.burger i {
+  display: block; width: 17px; height: 1.6px; background: var(--ink); border-radius: 2px;
+  transition: transform .34s var(--ease), opacity .2s var(--ease);
+}
+.burger[aria-expanded="true"] i:nth-child(1) { transform: translateY(6.6px) rotate(45deg); }
+.burger[aria-expanded="true"] i:nth-child(2) { opacity: 0; }
+.burger[aria-expanded="true"] i:nth-child(3) { transform: translateY(-6.6px) rotate(-45deg); }
+
+.drawer {
+  position: fixed; inset: 0; z-index: 55;
+  background: var(--ground);
+  padding: 96px var(--gutter) 40px;
+  display: flex; flex-direction: column; gap: 4px;
+  opacity: 0; visibility: hidden; transform: translateY(-8px);
+  transition: opacity .3s var(--ease), transform .38s var(--ease), visibility .3s;
+}
+.drawer.is-open { opacity: 1; visibility: visible; transform: none; }
+.drawer a {
+  font-family: var(--f-display); font-size: clamp(1.6rem, 7vw, 2.2rem); font-weight: 600;
+  letter-spacing: -0.03em; color: var(--ink); text-decoration: none;
+  padding: 12px 0; border-bottom: 1px solid var(--line);
+  opacity: 0; transform: translateY(12px);
+}
+.drawer.is-open a { opacity: 1; transform: none; transition: opacity .4s var(--ease), transform .45s var(--ease); }
+.drawer.is-open a:nth-child(1) { transition-delay: .06s; }
+.drawer.is-open a:nth-child(2) { transition-delay: .10s; }
+.drawer.is-open a:nth-child(3) { transition-delay: .14s; }
+.drawer.is-open a:nth-child(4) { transition-delay: .18s; }
+.drawer.is-open a:nth-child(5) { transition-delay: .22s; }
+.drawer.is-open a:nth-child(6) { transition-delay: .26s; }
+.drawer .btn { margin-top: 26px; align-self: flex-start; }
+.drawer.is-open .btn { opacity: 1; transform: none; transition-delay: .30s; }
+body.is-locked { overflow: hidden; }
+
+/* --- Section scaffolding -------------------------------------------------- */
+main { padding-top: 76px; }
+.sec { padding-block: var(--step); position: relative; }
+.sec__head { display: flex; flex-direction: column; gap: 18px; align-items: flex-start; max-width: 60ch; }
+.sec__head .lede { max-width: 52ch; }
+
+/* --- Hero ----------------------------------------------------------------- */
+.hero { padding-block: clamp(48px, 7vw, 96px) clamp(56px, 8vw, 104px); overflow: hidden; }
+.hero::before {
+  content: ""; position: absolute; z-index: -1;
+  top: -22%; right: -12%; width: min(760px, 78vw); aspect-ratio: 1;
+  background: radial-gradient(circle at 50% 50%,
+              color-mix(in srgb, var(--accent) 13%, transparent), transparent 66%);
+  filter: blur(14px); pointer-events: none;
+}
 .hero__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
-  gap: clamp(28px, 4vw, 60px);
-  align-items: center;
+  display: grid; grid-template-columns: 1fr; gap: clamp(44px, 6vw, 72px); align-items: center;
 }
-.hero__copy { display: flex; flex-direction: column; gap: 22px; align-items: flex-start; }
-.hero h1 .q { color: var(--accent); }
-.hero .lede { max-width: 46ch; }
+@media (min-width: 1000px) { .hero__grid { grid-template-columns: minmax(0, 1.04fr) minmax(0, .96fr); } }
 
+.hero__copy { display: flex; flex-direction: column; align-items: flex-start; gap: 26px; }
+.hero h1 .accent {
+  background: linear-gradient(100deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero .lede { max-width: 44ch; }
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; }
-.btn {
-  font-family: var(--f-mono);
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  text-decoration: none;
-  padding: 13px 22px;
-  border-radius: 2px;
-  white-space: nowrap;
-  border: 1px solid transparent;
-  transition: transform .14s ease, background .18s ease, border-color .18s ease;
-}
-.btn--primary { background: var(--accent); color: var(--on-accent); }
-.btn--primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); }
-.btn--ghost { border-color: var(--rule-strong); color: var(--ink); background: transparent; }
-.btn--ghost:hover { border-color: var(--ink); }
-.btn:active { transform: translateY(1px); }
 
-/* Drum chart: four stacked traces from the real annual record. */
-.drum {
-  border: 1px solid var(--rule);
-  background: var(--surface);
-  border-radius: 2px;
-  padding: 14px 14px 10px;
+.trust {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  font-size: .87rem; color: var(--mute);
 }
-.drum canvas { display: block; width: 100%; height: auto; }
-.drum__foot {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 10px;
-  padding-top: 9px;
-  border-top: 1px solid var(--rule);
-  font-family: var(--f-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.05em;
-  color: var(--mute);
+.trust span { display: inline-flex; align-items: center; gap: 8px; }
+.trust span + span::before {
+  content: ""; width: 3px; height: 3px; border-radius: 50%; background: var(--line-2);
 }
 
-/* --- Findings band ------------------------------------------------------- */
-.band {
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-  background: var(--surface);
+/* Hero visual: the real record, presented as an instrument panel */
+.stage { position: relative; }
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg); padding: 22px; position: relative; z-index: 2;
 }
-.band__grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--rule);
+.panel__top {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  margin-bottom: 14px;
 }
-.stat { background: var(--surface); padding: clamp(22px, 3vw, 34px) clamp(16px, 2vw, 26px); }
+.panel__title { font-family: var(--f-display); font-weight: 600; font-size: .98rem; letter-spacing: -0.02em; }
+.panel__meta { font-family: var(--f-mono); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+.drum canvas { display: block; width: 100%; height: auto; border-radius: var(--r-sm); }
+.panel__foot {
+  display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-family: var(--f-mono); font-size: .68rem; letter-spacing: .06em; color: var(--mute);
+}
+
+.float {
+  position: absolute; z-index: 3;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--sh-lg); padding: 13px 16px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.float__k { font-family: var(--f-mono); font-size: .62rem; text-transform: uppercase; letter-spacing: .12em; color: var(--mute); }
+.float__v { font-family: var(--f-display); font-weight: 600; font-size: 1.28rem; letter-spacing: -0.03em; line-height: 1; }
+.float--a { top: -22px; left: -14px; }
+.float--b { bottom: -24px; right: -10px; }
+.float--c { bottom: 24%; left: -34px; padding: 10px 14px; }
+@media (max-width: 1000px) { .float--c { display: none; } }
+@media (max-width: 560px) {
+  .float--a { top: -16px; left: -6px; transform: scale(.88); transform-origin: top left; }
+  .float--b { bottom: -18px; right: -4px; transform: scale(.88); transform-origin: bottom right; }
+}
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; align-self: flex-start;
+  font-family: var(--f-mono); font-size: .68rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .1em;
+  padding: 6px 12px; border-radius: var(--r-pill);
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+
+/* --- Stats band ----------------------------------------------------------- */
+.band { border-block: 1px solid var(--line); background: var(--surface); }
+.band__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 860px) { .band__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stat { padding: clamp(28px, 3.4vw, 44px) clamp(18px, 2vw, 30px); border-right: 1px solid var(--line); }
+.stat:nth-child(2n) { border-right: 0; }
+.stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+@media (min-width: 860px) {
+  .stat { border-right: 1px solid var(--line); border-bottom: 0; }
+  .stat:last-child { border-right: 0; }
+  .stat:nth-child(2n) { border-right: 1px solid var(--line); }
+  .stat:nth-child(4n) { border-right: 0; }
+}
 .stat__v {
-  font-family: var(--f-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: clamp(1.85rem, 3.4vw, 2.7rem);
-  font-weight: 500;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  display: block;
+  font-family: var(--f-display); font-weight: 600;
+  font-size: clamp(2.1rem, 4vw, 3.1rem); letter-spacing: -0.045em; line-height: 1;
+  display: block; font-variant-numeric: tabular-nums;
 }
-.stat__k {
-  display: block;
-  margin-top: 11px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--mute);
-  max-width: 26ch;
-}
-@media (max-width: 860px) { .band__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 460px) { .band__grid { grid-template-columns: minmax(0, 1fr); } }
+.stat__k { display: block; margin-top: 12px; font-size: .92rem; line-height: 1.45; color: var(--mute); max-width: 24ch; }
 
-/* --- Section scaffolding ------------------------------------------------- */
-.sec { padding-block: var(--step); }
-.sec--rule { border-top: 1px solid var(--rule); }
-
-/* Bulletin rail: mono metadata beside prose. */
-.rail-grid {
-  display: grid;
-  grid-template-columns: var(--rail) minmax(0, 1fr);
-  gap: clamp(20px, 3vw, 44px);
-  align-items: start;
+/* --- Capability cards ----------------------------------------------------- */
+.cards { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 52px; }
+@media (min-width: 680px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1040px) { .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.card {
+  position: relative; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: 30px 28px 26px;
+  display: flex; flex-direction: column; gap: 12px;
+  transition: transform .4s var(--ease), box-shadow .4s var(--ease), border-color .4s var(--ease);
+  will-change: transform;
 }
-.rail {
-  font-family: var(--f-mono);
-  font-size: 11px;
-  line-height: 1.7;
-  letter-spacing: 0.04em;
-  color: var(--mute);
-  border-top: 2px solid var(--ink);
-  padding-top: 12px;
+.card::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%),
+              color-mix(in srgb, var(--accent) 9%, transparent), transparent 62%);
+  transition: opacity .45s var(--ease);
 }
-.rail dt { color: var(--mute); }
-.rail dd { margin: 0 0 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.rail dd:last-child { margin-bottom: 0; }
-@media (max-width: 760px) {
-  .rail-grid { grid-template-columns: minmax(0, 1fr); }
-  .rail { display: flex; flex-wrap: wrap; gap: 0 26px; border-top-width: 1px; }
-  .rail dd { margin-bottom: 0; }
+.card:hover { transform: translateY(-6px); box-shadow: var(--sh-lg); border-color: var(--line-2); }
+.card:hover::after { opacity: 1; }
+.card__n {
+  font-family: var(--f-mono); font-size: .68rem; letter-spacing: .14em; color: var(--accent);
+}
+.card p { font-size: .96rem; color: var(--ink-2); max-width: none; }
+.card__foot {
+  margin-top: auto; padding-top: 16px; display: flex; align-items: center; gap: 8px;
+  font-family: var(--f-mono); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--mute); border-top: 1px solid var(--line);
 }
 
+/* --- Split (record) ------------------------------------------------------- */
+.split { display: grid; grid-template-columns: 1fr; gap: clamp(36px, 5vw, 64px); align-items: start; }
+@media (min-width: 940px) { .split { grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); } }
 .prose { display: flex; flex-direction: column; gap: 20px; align-items: flex-start; }
+.prose p { color: var(--ink-2); }
 
-/* --- Figure plates: keep a paper ground in both themes ------------------- */
-.plate {
-  background: var(--plate);
-  border: 1px solid var(--rule-strong);
-  border-radius: 2px;
-  padding: 16px;
+figure.plate {
+  margin: 0; background: var(--plate);
+  border: 1px solid var(--line-2); border-radius: var(--r-md);
+  padding: 16px; overflow: hidden;
+  box-shadow: var(--sh-sm);
+  transition: transform .5s var(--ease), box-shadow .5s var(--ease);
 }
-.plate img { display: block; width: 100%; height: auto; }
-.plate__cap {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #e2e5e0;
-  font-family: var(--f-mono);
-  font-size: 10.5px;
-  line-height: 1.55;
-  letter-spacing: 0.03em;
-  color: #6b736d;
-  max-width: none;
+figure.plate:hover { transform: translateY(-4px); box-shadow: var(--sh-md); }
+.plate img { display: block; width: 100%; height: auto; transition: transform .7s var(--ease); }
+.plate:hover img { transform: scale(1.02); }
+.plate figcaption {
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid #e8eae6;
+  font-family: var(--f-mono); font-size: .68rem; line-height: 1.5; letter-spacing: .02em; color: #6b736d;
 }
+.stack { display: flex; flex-direction: column; gap: 22px; }
 
-/* Split: catalogue prose beside the epicentre plate. */
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.82fr);
-  gap: clamp(28px, 4vw, 56px);
-  align-items: start;
+/* --- Approach timeline ---------------------------------------------------- */
+.steps { display: grid; grid-template-columns: 1fr; gap: 0; margin-top: 52px; position: relative; }
+@media (min-width: 900px) { .steps { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 22px; } }
+.step { position: relative; padding: 26px 0 26px 46px; border-top: 1px solid var(--line); }
+@media (min-width: 900px) { .step { padding: 34px 14px 0 0; border-top: 1px solid var(--line); } }
+.step__n {
+  position: absolute; left: 0; top: 24px;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface); border: 1px solid var(--line-2);
+  font-family: var(--f-mono); font-size: .72rem; color: var(--accent); font-weight: 600;
 }
-@media (max-width: 880px) { .split { grid-template-columns: minmax(0, 1fr); } }
+@media (min-width: 900px) { .step__n { top: -15px; left: 0; } }
+.step h3 { margin-bottom: 8px; }
+.step p { font-size: .93rem; color: var(--mute); max-width: none; }
 
-/* --- Method: stepped flow, no numbering ---------------------------------- */
-.flow { display: grid; gap: 0; margin-top: 8px; }
-.flow__row {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: clamp(18px, 3vw, 40px);
-  padding-block: 26px;
-  border-top: 1px solid var(--rule);
-  align-items: start;
-}
-.flow__row:last-child { border-bottom: 1px solid var(--rule); }
-.flow__label {
-  font-family: var(--f-display);
-  font-size: 1.02rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.flow__body { display: flex; flex-direction: column; gap: 8px; }
-.flow__meta {
-  font-family: var(--f-mono);
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  color: var(--mute);
-  font-variant-numeric: tabular-nums;
-}
-@media (max-width: 700px) { .flow__row { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
-
-/* --- Results table ------------------------------------------------------- */
-.tablewrap { overflow-x: auto; margin-top: 26px; }
-table { border-collapse: collapse; width: 100%; min-width: 540px; font-size: 14px; }
+/* --- Results -------------------------------------------------------------- */
+.results { display: grid; grid-template-columns: 1fr; gap: clamp(32px, 4vw, 56px); align-items: start; margin-top: 46px; }
+@media (min-width: 980px) { .results { grid-template-columns: minmax(0, 1.06fr) minmax(0, .94fr); } }
+.tablewrap { overflow-x: auto; border-radius: var(--r-md); }
+table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: .92rem; }
 caption {
-  text-align: left;
-  font-family: var(--f-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--mute);
-  padding-bottom: 12px;
+  text-align: left; padding-bottom: 14px;
+  font-family: var(--f-mono); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--mute);
 }
 thead th {
-  text-align: right;
-  font-family: var(--f-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--mute);
-  padding: 0 0 10px;
-  border-bottom: 1px solid var(--ink);
+  text-align: right; padding: 0 0 12px; border-bottom: 1px solid var(--ink);
+  font-family: var(--f-mono); font-size: .66rem; font-weight: 500;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--mute);
 }
 thead th:first-child { text-align: left; }
 tbody td {
-  padding: 11px 0;
-  border-bottom: 1px solid var(--rule);
-  text-align: right;
-  font-family: var(--f-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-2);
+  padding: 13px 0; border-bottom: 1px solid var(--line); text-align: right;
+  font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink-2);
 }
-tbody td:first-child { text-align: left; font-family: var(--f-body); color: var(--ink); }
+tbody td:first-child { text-align: left; font-family: var(--f-body); font-weight: 500; color: var(--ink); }
 tbody tr:last-child td { border-bottom: 1px solid var(--ink); }
-tbody tr.is-ref td { color: var(--mute); }
-tbody tr.is-ref td:first-child { color: var(--mute); font-style: italic; }
+tbody tr.is-ref td, tbody tr.is-ref td:first-child { color: var(--mute); font-style: italic; }
+tbody tr.is-top td:first-child { color: var(--accent); font-weight: 600; }
 
-.results__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
-  gap: clamp(28px, 4vw, 52px);
-  align-items: start;
-  margin-top: 34px;
+/* --- Trust grid ----------------------------------------------------------- */
+.trust-grid { display: grid; grid-template-columns: 1fr; gap: 1px; margin-top: 52px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+@media (min-width: 700px) { .trust-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1040px) { .trust-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.tcell { background: var(--surface); padding: 30px 28px; display: flex; flex-direction: column; gap: 10px; transition: background .3s var(--ease); }
+.tcell:hover { background: var(--surface-2); }
+.tcell__i {
+  width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); margin-bottom: 4px;
+  font-family: var(--f-mono); font-size: .8rem; font-weight: 600;
 }
-@media (max-width: 900px) { .results__grid { grid-template-columns: minmax(0, 1fr); } }
+.tcell p { font-size: .94rem; color: var(--mute); max-width: none; }
 
-/* --- Limits: two-column prose -------------------------------------------- */
-.limits { columns: 2; column-gap: clamp(30px, 4vw, 60px); margin-top: 10px; }
-.limits > div { break-inside: avoid; margin-bottom: 26px; }
-.limits h3 { margin-bottom: 7px; }
-.limits p { font-size: 15px; color: var(--ink-2); max-width: none; }
-.limits .tag {
-  font-family: var(--f-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--accent);
-  display: block;
-  margin-bottom: 9px;
+/* --- Limits --------------------------------------------------------------- */
+.limits { display: grid; grid-template-columns: 1fr; gap: 20px; margin-top: 48px; }
+@media (min-width: 760px) { .limits { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.limit {
+  border-left: 2px solid var(--accent); padding: 4px 0 4px 22px;
+  display: flex; flex-direction: column; gap: 8px;
 }
-@media (max-width: 760px) { .limits { columns: 1; } }
+.limit__t { font-family: var(--f-mono); font-size: .66rem; letter-spacing: .13em; text-transform: uppercase; color: var(--accent); }
+.limit p { font-size: .94rem; color: var(--ink-2); max-width: none; }
 
-/* --- Roster -------------------------------------------------------------- */
-.roster {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--rule);
-  border: 1px solid var(--rule);
-  margin-top: 30px;
-}
-.person { background: var(--ground); padding: 24px 22px; }
-.person__n { font-family: var(--f-display); font-weight: 600; font-size: 1.02rem; letter-spacing: -0.01em; }
-.person__r {
-  font-family: var(--f-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--mute);
-  margin-top: 7px;
-}
-@media (max-width: 720px) { .roster { grid-template-columns: minmax(0, 1fr); } }
-
-/* --- Footer -------------------------------------------------------------- */
-.foot {
-  border-top: 1px solid var(--rule);
-  padding-block: 40px 52px;
-  font-family: var(--f-mono);
-  font-size: 11.5px;
-  letter-spacing: 0.04em;
-  color: var(--mute);
-}
-.foot__in { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
-
-/* --- Forecast lab -------------------------------------------------------- */
-.lab__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: clamp(24px, 3vw, 44px);
-  align-items: start;
-  margin-top: 30px;
-}
-@media (max-width: 940px) { .lab__grid { grid-template-columns: minmax(0, 1fr); } }
-
-.panel {
-  border: 1px solid var(--rule);
+/* --- Final CTA ------------------------------------------------------------ */
+.finale { padding-block: var(--step); }
+.finale__box {
+  position: relative; overflow: hidden;
+  border-radius: var(--r-lg); border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 2px;
-  padding: clamp(18px, 2.4vw, 26px);
+  padding: clamp(44px, 6vw, 84px) clamp(26px, 5vw, 72px);
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 22px;
+  box-shadow: var(--sh-md);
 }
-.panel + .panel { margin-top: 18px; }
-
-.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-.field > label,
-.fieldset > legend {
-  font-family: var(--f-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-  color: var(--mute);
-  padding: 0;
+.finale__box::before {
+  content: ""; position: absolute; inset: -40% -10% auto -10%; height: 150%;
+  background:
+    radial-gradient(52% 60% at 18% 12%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+    radial-gradient(48% 56% at 84% 78%, color-mix(in srgb, var(--accent-2) 14%, transparent), transparent 70%);
+  pointer-events: none;
 }
-.help { font-size: 12px; color: var(--mute); max-width: none; }
-
-input[type="number"], input[type="date"], select {
-  font-family: var(--f-mono);
-  font-size: 13px;
-  color: var(--ink);
-  background: var(--ground);
-  border: 1px solid var(--rule-strong);
-  border-radius: 2px;
-  padding: 9px 10px;
-  width: 100%;
-  min-width: 0;
-}
-input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-
-.fieldset { border: 0; padding: 0; margin: 0 0 16px; }
-.seg { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.seg label {
-  position: relative;
-  font-family: var(--f-mono);
-  font-size: 11.5px;
-  letter-spacing: 0.04em;
-  padding: 8px 12px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 2px;
-  cursor: pointer;
-  color: var(--ink-2);
-  white-space: nowrap;
-  transition: border-color .15s ease, color .15s ease, background .15s ease;
-}
-.seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.seg label:hover { border-color: var(--ink); }
-.seg label.is-on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.seg label:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
-.seg .rmse { opacity: .72; }
-
-.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-
-.events { width: 100%; min-width: 0; border-collapse: collapse; font-size: 12px; }
-.events th {
-  font-family: var(--f-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--mute);
-  text-align: left;
-  padding: 0 4px 6px 0;
-  border-bottom: 1px solid var(--rule);
-}
-.events td { padding: 4px 4px 4px 0; }
-.events input { padding: 6px 7px; font-size: 12px; }
-.events td:last-child, .events th:last-child { width: 30px; padding-right: 0; }
-.rowdel {
-  font-family: var(--f-mono);
-  font-size: 14px;
-  line-height: 1;
-  width: 28px; height: 28px;
-  border: 1px solid var(--rule-strong);
-  background: transparent;
-  color: var(--mute);
-  border-radius: 2px;
-  cursor: pointer;
-}
-.rowdel:hover { border-color: var(--accent); color: var(--accent); }
-
-.lab__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 16px; }
-.btn--sm { padding: 10px 16px; font-size: 11.5px; }
-
-.msg { font-size: 12.5px; margin-top: 12px; }
-.msg--error { color: var(--accent); }
-
-/* Output readout */
-.readout { min-height: 260px; }
-.readout__state { font-size: 13.5px; color: var(--mute); }
-.readout__mag {
-  font-family: var(--f-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: clamp(3rem, 7vw, 4.4rem);
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  display: block;
-}
-.readout__band {
-  font-family: var(--f-mono);
-  font-size: 12.5px;
-  color: var(--mute);
-  margin-top: 10px;
-  display: block;
-}
-.readout__class {
-  display: inline-block;
-  margin-top: 14px;
-  font-family: var(--f-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  border: 1px solid var(--rule-strong);
-  border-radius: 2px;
-  padding: 5px 9px;
-  color: var(--ink-2);
-}
-.readout__class.is-strong { border-color: var(--accent); color: var(--accent); }
-
-.kv {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--rule);
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 18px;
-}
-.kv div { display: flex; flex-direction: column; gap: 2px; }
-.kv dt, .kv .k {
-  font-family: var(--f-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--mute);
-}
-.kv dd, .kv .v {
-  margin: 0;
-  font-family: var(--f-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  color: var(--ink);
-}
-
-.caution {
-  margin-top: 18px;
-  padding: 14px 16px;
-  border-left: 2px solid var(--accent);
-  background: var(--accent-soft);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--ink-2);
-}
-.caution strong { color: var(--ink); font-weight: 600; }
-
-.skeleton {
-  height: 12px;
-  border-radius: 2px;
-  background: var(--surface-alt);
-  margin-bottom: 10px;
-}
-.skeleton--tall { height: 54px; margin-bottom: 16px; }
 @media (prefers-reduced-motion: no-preference) {
-  .skeleton { animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+  .finale__box::before { animation: drift 22s ease-in-out infinite alternate; }
+  @keyframes drift { to { transform: translate3d(3%, -4%, 0) scale(1.08); } }
+}
+.finale__box > * { position: relative; }
+.finale__box p { max-width: 54ch; }
+
+/* --- Contact and team ----------------------------------------------------- */
+.meet { display: grid; grid-template-columns: 1fr; gap: clamp(36px, 5vw, 64px); align-items: start; }
+@media (min-width: 900px) { .meet { grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); } }
+.people { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+@media (min-width: 560px) { .people { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.person { background: var(--surface); padding: 24px 20px; display: flex; flex-direction: column; gap: 8px; }
+.person__a {
+  width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+  font-family: var(--f-display); font-weight: 600; font-size: .86rem;
+}
+.person__n { font-family: var(--f-display); font-weight: 600; font-size: .98rem; letter-spacing: -0.02em; }
+.person__r { font-family: var(--f-mono); font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); }
+.dl { display: grid; gap: 0; margin-top: 8px; }
+.dl > div { display: flex; justify-content: space-between; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.dl dt { font-size: .9rem; color: var(--mute); }
+.dl dd { margin: 0; font-size: .93rem; text-align: right; font-weight: 500; }
+.dl a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line-2); transition: border-color .2s var(--ease); }
+.dl a:hover { border-color: var(--accent); color: var(--accent); }
+
+/* --- Footer --------------------------------------------------------------- */
+.foot { border-top: 1px solid var(--line); padding-block: 52px 44px; background: var(--surface); }
+.foot__grid { display: grid; grid-template-columns: 1fr; gap: 34px; }
+@media (min-width: 760px) { .foot__grid { grid-template-columns: 1.4fr 1fr 1fr; } }
+.foot h4 { font-family: var(--f-mono); font-size: .66rem; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); font-weight: 500; margin-bottom: 14px; }
+.foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.foot a { color: var(--ink-2); text-decoration: none; font-size: .93rem; transition: color .2s var(--ease); }
+.foot a:hover { color: var(--accent); }
+.foot__note { max-width: 36ch; font-size: .92rem; color: var(--mute); margin-top: 14px; }
+.foot__base {
+  margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px;
+  font-family: var(--f-mono); font-size: .7rem; letter-spacing: .05em; color: var(--mute);
 }
 
-/* --- Motion: reveal on entry, off when the viewer asks ------------------- */
+/* --- Motion --------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
-  .has-js .reveal { opacity: 0; transform: translateY(14px); }
-  .reveal.is-in {
-    opacity: 1;
-    transform: none;
-    transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1);
+  .has-js .rv { opacity: 0; transform: translateY(20px); }
+  .rv.in { opacity: 1; transform: none; transition: opacity .7s var(--ease), transform .8s var(--ease); }
+  .has-js .rv-s > * { opacity: 0; transform: translateY(18px); }
+  .rv-s.in > * { opacity: 1; transform: none; transition: opacity .6s var(--ease), transform .7s var(--ease); }
+  .rv-s.in > *:nth-child(1) { transition-delay: .04s; }
+  .rv-s.in > *:nth-child(2) { transition-delay: .10s; }
+  .rv-s.in > *:nth-child(3) { transition-delay: .16s; }
+  .rv-s.in > *:nth-child(4) { transition-delay: .22s; }
+  .rv-s.in > *:nth-child(5) { transition-delay: .28s; }
+  .rv-s.in > *:nth-child(6) { transition-delay: .34s; }
+  .float { animation: bob 7s ease-in-out infinite alternate; }
+  .float--b { animation-duration: 8.5s; animation-delay: -2s; }
+  .float--c { animation-duration: 9.5s; animation-delay: -4s; }
+  @keyframes bob { to { transform: translateY(-9px); } }
+  @media (max-width: 560px) {
+    .float--a { animation: none; }
+    .float--b { animation: none; }
   }
 }
 
-@media (max-width: 900px) {
-  .hero__grid { grid-template-columns: minmax(0, 1fr); }
+/* ===== Forecast lab ======================================================== */
+.lab { display: grid; grid-template-columns: 1fr; gap: clamp(22px, 3vw, 34px); align-items: start; margin-top: 46px; }
+@media (min-width: 1000px) { .lab { grid-template-columns: minmax(0, 1.02fr) minmax(0, .98fr); } }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: clamp(22px, 2.6vw, 30px); box-shadow: var(--sh-sm); }
+.box + .box { margin-top: 18px; }
+.field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
+.field > label, .fs > legend {
+  font-family: var(--f-mono); font-size: .66rem; font-weight: 500;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--mute); padding: 0;
+}
+.help { font-size: .84rem; color: var(--mute); max-width: none; line-height: 1.5; }
+input[type="number"], input[type="date"], select {
+  font-family: var(--f-mono); font-size: .88rem; color: var(--ink);
+  background: var(--ground); border: 1px solid var(--line-2); border-radius: var(--r-sm);
+  padding: 11px 13px; width: 100%; min-width: 0;
+  transition: border-color .2s var(--ease), box-shadow .2s var(--ease);
+}
+input[type="number"]:hover, input[type="date"]:hover, select:hover { border-color: var(--mute); }
+input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:focus-visible {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.fs { border: 0; padding: 0; margin: 0 0 18px; }
+.seg { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.seg label {
+  position: relative; cursor: pointer; white-space: nowrap;
+  font-family: var(--f-body); font-size: .86rem; font-weight: 500;
+  padding: 9px 15px; border: 1px solid var(--line-2); border-radius: var(--r-pill);
+  color: var(--ink-2); background: var(--surface);
+  transition: border-color .2s var(--ease), color .2s var(--ease),
+              background .2s var(--ease), transform .2s var(--ease);
+}
+.seg label:hover { border-color: var(--ink); transform: translateY(-1px); }
+.seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.seg label.is-on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.seg label:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.seg .rmse { font-family: var(--f-mono); font-size: .78em; opacity: .75; margin-left: 5px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 480px) { .grid3 { grid-template-columns: 1fr; } }
+
+.events { width: 100%; min-width: 0; border-collapse: collapse; font-size: .84rem; }
+.events th {
+  font-family: var(--f-mono); font-size: .6rem; font-weight: 500; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--mute); text-align: left;
+  padding: 0 5px 8px 0; border-bottom: 1px solid var(--line);
+}
+.events td { padding: 5px 5px 5px 0; }
+.events input { padding: 8px 9px; font-size: .82rem; border-radius: var(--r-xs); }
+.events td:last-child, .events th:last-child { width: 34px; padding-right: 0; }
+.rowdel {
+  width: 30px; height: 30px; border-radius: var(--r-xs); cursor: pointer;
+  border: 1px solid var(--line-2); background: transparent; color: var(--mute);
+  font-family: var(--f-mono); font-size: .86rem; line-height: 1;
+  transition: border-color .2s var(--ease), color .2s var(--ease);
+}
+.rowdel:hover { border-color: var(--accent); color: var(--accent); }
+.lab__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
+.msg { font-size: .86rem; margin-top: 14px; }
+.msg--error { color: var(--accent); }
+
+.readout { min-height: 300px; }
+.readout__state { font-size: .94rem; color: var(--mute); }
+.readout__mag {
+  font-family: var(--f-display); font-weight: 600; font-variant-numeric: tabular-nums;
+  font-size: clamp(3.4rem, 8vw, 5rem); letter-spacing: -0.05em; line-height: 1; display: block;
+}
+.readout__band { font-size: .88rem; color: var(--mute); margin-top: 12px; display: block; line-height: 1.55; }
+.readout__class {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 16px;
+  font-family: var(--f-mono); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase;
+  border: 1px solid var(--line-2); border-radius: var(--r-pill); padding: 7px 13px; color: var(--ink-2);
+}
+.readout__class.is-strong { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.kv { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+.kv div { display: flex; flex-direction: column; gap: 3px; }
+.kv .k { font-family: var(--f-mono); font-size: .6rem; letter-spacing: .11em; text-transform: uppercase; color: var(--mute); }
+.kv .v { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: .92rem; color: var(--ink); }
+.caution {
+  margin-top: 22px; padding: 16px 18px; border-radius: var(--r-md);
+  background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  font-size: .88rem; line-height: 1.55; color: var(--ink-2);
+}
+.caution strong { color: var(--ink); font-weight: 700; }
+.skeleton { height: 13px; border-radius: var(--r-xs); background: var(--surface-2); margin-bottom: 12px; }
+.skeleton--tall { height: 62px; margin-bottom: 20px; }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 }
 </style>
 </head>
 <body>
-<header class="nav">
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
   <div class="shell nav__in">
-    <a class="nav__mark" href="#top"><span class="full">PHIVOLCS Foreshock Study</span><span class="short">Foreshock Study</span></a>
-    <nav class="nav__links">
-      <a class="is-secondary" href="#record">Record</a>
-      <a class="is-secondary" href="#method">Method</a>
-      <a class="is-secondary" href="#results">Results</a>
-      <a href="#lab">Run it</a>
-      <a class="is-optional" href="#limits">Limits</a>
-      <a class="is-optional" href="#team">Team</a>
+    <a class="brand" href="#top" aria-label="Foreshock to Mainshock, home">
+      <span class="brand__mark" aria-hidden="true"><span></span></span>
+      Foreshock to Mainshock
+    </a>
+    <nav class="nav__links" aria-label="Primary">
+      <a href="#scope">Scope</a>
+      <a href="#record">Record</a>
+      <a href="#approach">Approach</a>
+      <a href="#results">Results</a>
+      <a href="#lab">Forecaster</a>
+      <a href="#authors">Authors</a>
     </nav>
+    <a class="btn btn--primary btn--sm nav__cta" href="#lab">Run the model <span class="arw" aria-hidden="true">&rsaquo;</span></a>
+    <button class="burger" id="burger" aria-expanded="false" aria-controls="drawer" aria-label="Open menu">
+      <i></i><i></i><i></i>
+    </button>
   </div>
 </header>
 
-<main id="top">
+<div class="drawer" id="drawer" hidden>
+  <a href="#scope">Scope</a>
+  <a href="#record">Record</a>
+  <a href="#approach">Approach</a>
+  <a href="#results">Results</a>
+  <a href="#lab">Forecaster</a>
+  <a href="#authors">Authors</a>
+  <a class="btn btn--primary" href="#lab">Run the model <span class="arw" aria-hidden="true">&rsaquo;</span></a>
+</div>
 
-  <!-- Hero -->
+<main id="main">
+  <div id="top"></div>
+
+  <!-- ===================== Hero ===================== -->
   <section class="sec hero">
     <div class="shell hero__grid">
-      <div class="hero__copy">
-        <p class="eyebrow">Undergraduate thesis, 2026</p>
-        <h1>Can foreshocks forecast <span class="q">the mainshock?</span></h1>
-        <p class="lede">A 119-year PHIVOLCS catalogue, mapped fault distances, 16 models, and an honest account of how little signal foreshocks carry.</p>
+      <div class="hero__copy rv-s">
+        <p class="pill"><span class="dot" aria-hidden="true"></span> Undergraduate thesis, 2026</p>
+        <h1>Where foreshocks become <span class="accent">forecasts.</span></h1>
+        <p class="lede">A machine learning model that reads the tremors before a Philippine mainshock and estimates how large it will be. Built on 119 years of PHIVOLCS records and mapped fault distances.</p>
         <div class="cta-row">
-          <a class="btn btn--primary" href="#results">Read the results</a>
-          <a class="btn btn--ghost" href="#method">How it works</a>
+          <a class="btn btn--primary" href="#lab" data-magnetic>Run the model <span class="arw" aria-hidden="true">&rsaquo;</span></a>
+          <a class="btn btn--ghost" href="#approach">Explore the method</a>
         </div>
+        <p class="trust">
+          <span>17,667 catalogued events</span>
+          <span>16 models compared</span>
+          <span>Verified against Python</span>
+        </p>
       </div>
 
-      <div class="drum">
-        <canvas id="drum" aria-label="Drum chart of the annual maximum earthquake magnitude recorded in the Philippines between 1960 and 2026. Deflections mark each year, and the largest events are picked out in the accent colour." role="img"></canvas>
-        <div class="drum__foot">
-          <span>1960 to 2026</span>
-          <span>Annual maximum magnitude</span>
+      <div class="stage rv" data-parallax>
+        <div class="panel drum">
+          <div class="panel__top">
+            <span class="panel__title">Annual maximum magnitude</span>
+            <span class="panel__meta">1960 to 2026</span>
+          </div>
+          <canvas id="drum" role="img" aria-label="Drum chart of the annual maximum earthquake magnitude recorded in the Philippines between 1960 and 2026, drawn as four stacked seismograph traces with the largest years marked."></canvas>
+          <div class="panel__foot">
+            <span>PHIVOLCS catalogue</span>
+            <span>Marked: M 7.5 and above</span>
+          </div>
+        </div>
+        <div class="float float--a">
+          <span class="float__k">Best model</span>
+          <span class="float__v">Extra Trees</span>
+        </div>
+        <div class="float float--b">
+          <span class="float__k">Skill over average</span>
+          <span class="float__v accent">+23.6%</span>
+        </div>
+        <div class="float float--c">
+          <span class="float__k">b-value</span>
+          <span class="float__v">0.920</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Findings band -->
-  <section class="band">
+  <!-- ===================== Stats ===================== -->
+  <section class="band" aria-label="Key figures">
     <div class="shell">
-      <div class="band__grid">
+      <div class="band__grid rv-s">
         <div class="stat">
-          <span class="stat__v">17,667</span>
+          <span class="stat__v num" data-count="17667">17,667</span>
           <span class="stat__k">Earthquakes retained after cleaning, 1907 to 2026</span>
         </div>
         <div class="stat">
-          <span class="stat__v">535</span>
+          <span class="stat__v num" data-count="535">535</span>
           <span class="stat__k">Mainshocks with a usable foreshock window</span>
         </div>
         <div class="stat">
-          <span class="stat__v pos">23.6%</span>
-          <span class="stat__k">Error reduction over the historical average, best model</span>
+          <span class="stat__v num accent" data-count="23.6" data-decimals="1" data-suffix="%">23.6%</span>
+          <span class="stat__k">Error reduction over the historical average</span>
         </div>
         <div class="stat">
-          <span class="stat__v">797</span>
+          <span class="stat__v num" data-count="797">797</span>
           <span class="stat__k">Mapped fault points the catalogue is measured against</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- The record -->
-  <section class="sec sec--rule" id="record">
+  <!-- ===================== Scope ===================== -->
+  <section class="sec" id="scope">
     <div class="shell">
-      <div class="split reveal">
-        <div class="prose">
-          <h2>A century of Philippine seismicity, and what it can honestly support</h2>
-          <p>The Philippine Institute of Volcanology and Seismology has logged earthquakes along the archipelago since 1907. This study uses the whole retrievable archive: every event with a complete origin time, epicentre, depth, and at least one reported magnitude.</p>
-          <p>Cleaning that archive is where most of the honest work sits. The four magnitude scales in the bulletin are almost never co-reported with moment magnitude, so no defensible conversion could be fitted from this catalogue alone. Working magnitude falls back to the first available scale in the order Mw, Ms, mb, ML, and the paper says so plainly rather than implying a homogeneous record.</p>
-          <p>The catalogue is also complete only from magnitude 4.0 upward, because that is where PHIVOLCS begins publishing. Fitting the Gutenberg-Richter relation above a completeness magnitude of 4.9 gives a b-value of 0.920 with a standard error of 0.014, which is what a subduction margin should produce.</p>
-          <p>Each event also carries its distance to the nearest active fault, measured against fault lines mapped in QGIS. Two in five events sit within 25 km of a mapped fault and the median distance is 33 km. Recomputing those distances from the coordinates agrees with the supplied values for 98.2% of events to within a kilometre, the residual being a rounding effect that grows with distance and is immaterial inside the 100 km observation radius.</p>
+      <div class="sec__head rv">
+        <p class="eyebrow">What the study does</p>
+        <h2>Six stages, each one auditable on its own.</h2>
+        <p class="lede">Every stage writes a table you can check. Nothing is asserted that the repository cannot reproduce from the raw workbook.</p>
+      </div>
+
+      <div class="cards rv-s">
+        <article class="card" data-tilt>
+          <span class="card__n">01</span>
+          <h3>Catalogue cleaning</h3>
+          <p>Reads the PHIVOLCS workbook, rejects impossible hypocentres, collapses duplicate origins and resolves four magnitude scales into one working scale.</p>
+          <p class="card__foot">18,338 in, 17,667 out</p>
+        </article>
+        <article class="card" data-tilt>
+          <span class="card__n">02</span>
+          <h3>Frequency and magnitude</h3>
+          <p>Completeness magnitude by maximum curvature and goodness of fit, then the Gutenberg-Richter b-value by least squares and Aki-Utsu maximum likelihood.</p>
+          <p class="card__foot">b = 0.920, Mc 4.9</p>
+        </article>
+        <article class="card" data-tilt>
+          <span class="card__n">03</span>
+          <h3>Maeda declustering</h3>
+          <p>Removes the small dependent events that trail a larger one, using the space and time windows of Hirose and colleagues, without deleting the mainshocks being forecast.</p>
+          <p class="card__foot">2,207 removed</p>
+        </article>
+        <article class="card" data-tilt>
+          <span class="card__n">04</span>
+          <h3>Feature engineering</h3>
+          <p>Twenty-two features from the published table plus five that summarise how far the foreshocks sit from the nearest mapped active fault.</p>
+          <p class="card__foot">27 features per window</p>
+        </article>
+        <article class="card" data-tilt>
+          <span class="card__n">05</span>
+          <h3>Model comparison</h3>
+          <p>Sixteen forecasters across four families, scored first by expanding-window validation and then once on a test partition nothing has touched.</p>
+          <p class="card__foot">Tree, linear, recurrent, classical</p>
+        </article>
+        <article class="card" data-tilt>
+          <span class="card__n">06</span>
+          <h3>Browser forecaster</h3>
+          <p>Four trained models exported to run client side, with the feature mathematics reimplemented and checked value by value against the Python original.</p>
+          <p class="card__foot">1,620 values verified</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== Record ===================== -->
+  <section class="sec" id="record">
+    <div class="shell">
+      <div class="split">
+        <div class="prose rv">
+          <p class="eyebrow">The record</p>
+          <h2>A century of Philippine seismicity, and what it honestly supports.</h2>
+          <p>PHIVOLCS has logged earthquakes along the archipelago since 1907. This study uses the whole retrievable archive: every event with a complete origin time, epicentre, depth and at least one reported magnitude.</p>
+          <p>Cleaning that archive is where most of the honest work sits. The four magnitude scales are almost never co-reported with moment magnitude, so no defensible conversion could be fitted from this catalogue alone. The working magnitude falls back to the first available scale in the order Mw, Ms, mb, ML, and the paper says so plainly rather than implying a homogeneous record.</p>
+          <p>The catalogue is also complete only from magnitude 4.0 upward, because that is where PHIVOLCS begins publishing. Each event additionally carries its distance to the nearest active fault, measured against fault lines mapped in QGIS. Two in five sit within 25 km of one.</p>
+          <a class="btn btn--quiet" href="#approach">See how it is processed <span class="arw" aria-hidden="true">&rsaquo;</span></a>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:22px;">
-          <figure class="plate" style="margin:0;">
-            <img src="figures/fig_epicentres.png" alt="Scatter map of earthquake epicentres across the Philippine archipelago. Open circles mark events of magnitude 6.0 and above, concentrated along the trenches on the eastern seaboard and the Philippine Fault.">
-            <figcaption class="plate__cap">Epicentres of all 17,667 catalogued events. Open circles mark magnitude 6.0 and above.</figcaption>
+        <div class="stack rv">
+          <figure class="plate">
+            <img src="figures/fig_epicentres.png" width="1308" height="1495" loading="lazy" decoding="async" alt="Scatter map of earthquake epicentres across the Philippine archipelago. Open circles mark events of magnitude 6.0 and above, concentrated along the eastern trenches and the Philippine Fault.">
+            <figcaption>Epicentres of all 17,667 catalogued events. Open circles mark magnitude 6.0 and above.</figcaption>
           </figure>
-          <figure class="plate" style="margin:0;">
-            <img src="figures/fig_gutenberg_richter.png" alt="Frequency magnitude distribution on a logarithmic axis, with a fitted Gutenberg-Richter line above a completeness magnitude of 4.9 and a b-value of 0.920.">
-            <figcaption class="plate__cap">Frequency magnitude distribution with the Aki-Utsu maximum-likelihood fit above Mc 4.9.</figcaption>
+          <figure class="plate">
+            <img src="figures/fig_gutenberg_richter.png" width="1358" height="999" loading="lazy" decoding="async" alt="Frequency magnitude distribution on a logarithmic axis with a fitted Gutenberg-Richter line above a completeness magnitude of 4.9 and a b-value of 0.920.">
+            <figcaption>Frequency magnitude distribution with the Aki-Utsu maximum-likelihood fit above Mc 4.9.</figcaption>
           </figure>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Method -->
-  <section class="sec sec--rule" id="method">
+  <!-- ===================== Approach ===================== -->
+  <section class="sec" id="approach">
     <div class="shell">
-      <div class="rail-grid reveal">
-        <dl class="rail">
-          <dt>Window</dt><dd>14 days</dd>
-          <dt>Radius</dt><dd>100 km</dd>
-          <dt>Target</dt><dd>M 5.0 and above</dd>
-          <dt>Split</dt><dd>60 / 20 / 20</dd>
-          <dt>Seed</dt><dd>42</dd>
-        </dl>
-        <div class="prose">
-          <h2>From a raw bulletin to a forecast the calendar cannot cheat</h2>
-          <p class="lede">Every step below was chosen to stop the model from learning something it would not know in advance.</p>
-        </div>
+      <div class="sec__head rv">
+        <p class="eyebrow">Our approach</p>
+        <h2>From a raw bulletin to a forecast the calendar cannot cheat.</h2>
+        <p class="lede">Every step exists to stop the model learning something it would not know in advance.</p>
       </div>
 
-      <div class="flow reveal">
-        <div class="flow__row">
-          <div class="flow__label">Decluster</div>
-          <div class="flow__body">
-            <p>Maeda's method, as set out by Hirose and colleagues, removes the small dependent events that trail a larger one. An event is dependent when it falls inside the earlier event's space and time window and is at least one magnitude unit smaller, which is what keeps the procedure from deleting the mainshocks the study is trying to forecast.</p>
-            <p class="flow__meta">2,207 dependent events removed, 15,460 retained</p>
-          </div>
+      <div class="steps rv-s">
+        <div class="step">
+          <span class="step__n">01</span>
+          <h3>Clean</h3>
+          <p>Reject impossible records, collapse duplicates, resolve the magnitude scales, and log what each rule removed.</p>
         </div>
-        <div class="flow__row">
-          <div class="flow__label">Build windows</div>
-          <div class="flow__body">
-            <p>Each mainshock of magnitude 5.0 or more contributes one record, built from the catalogued events within 100 km during the 14 days before it. The window closes strictly before the mainshock origin time. Windows are drawn from the full catalogue rather than the declustered one, because the small events Maeda's method strips out are precisely the precursory activity worth measuring.</p>
-            <p class="flow__meta">3,261 candidate mainshocks, 535 with enough foreshocks to use</p>
-          </div>
+        <div class="step">
+          <span class="step__n">02</span>
+          <h3>Decluster</h3>
+          <p>Apply Maeda's method so aftershock swarms cannot masquerade as precursory activity.</p>
         </div>
-        <div class="flow__row">
-          <div class="flow__label">Engineer features</div>
-          <div class="flow__body">
-            <p>Twenty-seven quantities describe each window. Twenty-two come from the published feature table: basic counts and magnitudes, the Gutenberg-Richter a and b values by two estimators, seismic energy release and magnitude deficit, two rate-change statistics, and the time since the last large regional earthquake. Five more summarise how far the foreshocks sit from the nearest mapped fault. The mainshock's own fault distance is excluded, being a property of the event under forecast.</p>
-            <p class="flow__meta">Strongest predictors: days since the last M 6.5, then mean distance to the nearest fault</p>
-          </div>
+        <div class="step">
+          <span class="step__n">03</span>
+          <h3>Engineer</h3>
+          <p>Build 27 features from the 14 days and 100 km before each mainshock, target excluded.</p>
         </div>
-        <div class="flow__row">
-          <div class="flow__label">Train and test</div>
-          <div class="flow__body">
-            <p>Splitting is strictly by time. Every validation sequence postdates every training sequence and every test sequence postdates both, first through expanding-window rolling-origin validation and then once on an untouched test partition. A shuffled split would let a model learn from the future of its own test set, which is the most common way a seismic forecasting result turns out to be an artefact.</p>
-            <p class="flow__meta">Imputation, winsorising and scaling refitted inside each fold from training rows only</p>
-          </div>
+        <div class="step">
+          <span class="step__n">04</span>
+          <h3>Train</h3>
+          <p>Split strictly by time, 60:20:20, refitting every transform inside each fold from training rows alone.</p>
+        </div>
+        <div class="step">
+          <span class="step__n">05</span>
+          <h3>Verify</h3>
+          <p>Score once on untouched data, compare against naive baselines, and publish the limits.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Results -->
-  <section class="sec sec--rule" id="results">
+  <!-- ===================== Results ===================== -->
+  <section class="sec" id="results">
     <div class="shell">
-      <div class="prose reveal" style="margin-bottom:34px;">
-        <h2>Tree ensembles win, and a third of the field cannot beat the historical average</h2>
-        <p class="lede">Sixteen forecasters ran on identical sequences. The result is modest, and reporting it as modest is the point.</p>
+      <div class="sec__head rv">
+        <p class="eyebrow">Results</p>
+        <h2>Real skill, and small. Both halves of that sentence matter.</h2>
+        <p class="lede">Sixteen forecasters ran on identical sequences. A third of them cannot beat simply quoting the historical average.</p>
       </div>
 
-      <figure class="plate reveal" style="margin:0;">
-        <img src="figures/fig_leaderboard.png" alt="Horizontal bar chart of test root mean squared error for sixteen forecasting models. Random Forest, Extra Trees and Gradient Boosting are shortest. A dashed line marks the climatology baseline. The multilayer perceptron, the one-dimensional convolutional network and the persistence baseline extend past it; the GRU and LSTM fall just short of it.">
-        <figcaption class="plate__cap">Test-partition error for all sixteen models. Bars past the dashed line fail to beat the historical average.</figcaption>
+      <figure class="plate rv" style="margin-top:42px;">
+        <img src="figures/fig_leaderboard.png" width="1839" height="1587" loading="lazy" decoding="async" alt="Horizontal bar chart of test root mean squared error for sixteen forecasting models. Extra Trees and Random Forest are shortest. A dashed line marks the climatology baseline; the multilayer perceptron, the convolutional network and the persistence baseline extend past it.">
+        <figcaption>Test-partition error for all sixteen models. Bars past the dashed line fail to beat the historical average.</figcaption>
       </figure>
 
-      <div class="results__grid reveal">
+      <div class="results rv">
         <div class="tablewrap">
           <table>
             <caption>Test partition, 107 held-out sequences</caption>
             <thead>
-              <tr>
-                <th scope="col">Model</th>
-                <th scope="col">RMSE</th>
-                <th scope="col">R squared</th>
-                <th scope="col">Skill</th>
-              </tr>
+              <tr><th scope="col">Model</th><th scope="col">RMSE</th><th scope="col">R squared</th><th scope="col">Skill</th></tr>
             </thead>
             <tbody>
-              <tr><td>Extra Trees</td><td>0.492</td><td>0.147</td><td class="pos">+23.6%</td></tr>
-              <tr><td>Random Forest</td><td>0.498</td><td>0.125</td><td class="pos">+21.6%</td></tr>
-              <tr><td>ARIMAX</td><td>0.510</td><td>0.085</td><td class="pos">+18.0%</td></tr>
-              <tr><td>Elastic Net</td><td>0.513</td><td>0.073</td><td class="pos">+17.0%</td></tr>
-              <tr><td>k-Nearest Neighbours</td><td>0.514</td><td>0.068</td><td class="pos">+16.6%</td></tr>
-              <tr><td>GRU</td><td>0.551</td><td>-0.069</td><td class="pos">+4.2%</td></tr>
-              <tr><td>LSTM</td><td>0.560</td><td>-0.103</td><td class="pos">+1.2%</td></tr>
+              <tr class="is-top"><td>Extra Trees</td><td>0.492</td><td>0.147</td><td class="accent">+23.6%</td></tr>
+              <tr><td>Random Forest</td><td>0.498</td><td>0.125</td><td class="accent">+21.6%</td></tr>
+              <tr><td>ARIMAX</td><td>0.510</td><td>0.085</td><td class="accent">+18.0%</td></tr>
+              <tr><td>Elastic Net</td><td>0.513</td><td>0.073</td><td class="accent">+17.0%</td></tr>
+              <tr><td>k-Nearest Neighbours</td><td>0.514</td><td>0.068</td><td class="accent">+16.6%</td></tr>
+              <tr><td>GRU</td><td>0.551</td><td>-0.069</td><td class="accent">+4.2%</td></tr>
+              <tr><td>LSTM</td><td>0.560</td><td>-0.103</td><td class="accent">+1.2%</td></tr>
               <tr class="is-ref"><td>Climatology baseline</td><td>0.563</td><td>-0.116</td><td>0.0%</td></tr>
               <tr><td>Multilayer Perceptron</td><td>0.585</td><td>-0.206</td><td>-8.0%</td></tr>
               <tr><td>1D-CNN</td><td>0.675</td><td>-0.606</td><td>-43.9%</td></tr>
@@ -846,30 +1007,29 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 
         <div class="prose">
           <h3>What the numbers say</h3>
-          <p>An Extra Trees ensemble on the 27 engineered features cuts squared error by 23.6% against simply quoting the historical average magnitude. That is real skill, and it is small. In magnitude units the typical error is still about half a unit, which is the difference between a tremor and a damaging event.</p>
-          <h3>The recurrent networks do not earn their complexity</h3>
-          <p>The GRU and the LSTM land just ahead of the baseline, at 4.2% and 1.2% skill, and every tree ensemble beats them by a wide margin. ARIMAX, a classical time-series model the original methodology never mentions, outperforms all of them. With 428 training sequences of ten timesteps each there is not enough data for a recurrent architecture to pay for its parameters.</p>
+          <p>An Extra Trees ensemble on 27 features cuts squared error by 23.6% against quoting the historical average magnitude. That is real skill. It is also small: the typical error is still about half a magnitude unit, the difference between a tremor and a damaging event.</p>
           <h3>Fault distance earns its place</h3>
-          <p>Adding the distance from each foreshock to the nearest mapped fault lifted the best model from 21.4% to 23.6% skill. Three of the five fault features rank fifth, sixth and seventh of 27 by permutation importance, together carrying 18% of the total. The other two measure nothing the model can use.</p>
-          <h3>Where the signal actually lives</h3>
-          <p>Treating the forecast as an alarm for magnitude 6.0 gives an ROC AUC of 0.699 against 0.50 for chance. The model ranks dangerous sequences better than coin-flipping, even though its point forecasts are blunt.</p>
+          <p>Adding the distance from each foreshock to the nearest mapped fault lifted the best model from 21.4% to 23.6%. Three of the five fault features rank fifth, sixth and seventh of 27 by permutation importance. The other two measure nothing the model can use, and are reported as such.</p>
+          <h3>Depth beats recurrence</h3>
+          <p>The recurrent networks land barely ahead of the baseline and every tree ensemble beats them. With 428 training sequences of ten timesteps, there is not enough data for a recurrent architecture to pay for its parameters.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Forecast lab -->
-  <section class="sec sec--rule" id="lab">
+  <!-- ===================== Forecast lab ===================== -->
+  <section class="sec" id="lab">
     <div class="shell">
-      <div class="prose reveal">
-        <h2>Run the model on a foreshock sequence</h2>
-        <p class="lede">Four trained models running in your browser on the events you give them, fault distances included.</p>
+      <div class="sec__head rv">
+        <p class="eyebrow">Try it</p>
+        <h2>Run the model on a foreshock sequence.</h2>
+        <p class="lede">Four trained models from the paper, running in your browser on the events you give them, fault distances resolved automatically.</p>
       </div>
 
-      <div class="lab__grid">
+      <div class="lab">
         <div>
-          <div class="panel">
-            <fieldset class="fieldset">
+          <div class="box">
+            <fieldset class="fs">
               <legend>Sequence</legend>
               <div class="seg" role="radiogroup" aria-label="Sequence source">
                 <label><input type="radio" name="source" value="recorded" checked><span>A recorded sequence</span></label>
@@ -901,14 +1061,14 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
               <p class="help">The epicentre of the sequence and the moment you are forecasting from. Regional history and the distance to the nearest mapped fault are both resolved from the catalogue at that point.</p>
             </div>
 
-            <fieldset class="fieldset" style="margin-top:18px;">
+            <fieldset class="fs" style="margin-top:20px; margin-bottom:0;">
               <legend>Model</legend>
               <div class="seg" role="radiogroup" aria-label="Model" id="models"></div>
             </fieldset>
           </div>
 
-          <div class="panel">
-            <fieldset class="fieldset" style="margin-bottom:10px;">
+          <div class="box">
+            <fieldset class="fs" style="margin-bottom:12px;">
               <legend>Foreshocks in the 14 days before</legend>
             </fieldset>
             <div style="overflow-x:auto;">
@@ -928,87 +1088,149 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
             </div>
             <div class="lab__actions">
               <button type="button" class="btn btn--ghost btn--sm" id="addRow">Add event</button>
-              <button type="button" class="btn btn--primary btn--sm" id="run">Forecast</button>
+              <button type="button" class="btn btn--primary btn--sm" id="run">Forecast <span class="arw" aria-hidden="true">&rsaquo;</span></button>
             </div>
             <p class="msg" id="msg"></p>
           </div>
         </div>
 
-        <div class="panel readout" id="readout">
+        <div class="box readout" id="readout">
           <p class="readout__state" id="state">Loading the trained models.</p>
           <div class="skeleton skeleton--tall"></div>
-          <div class="skeleton" style="width:70%"></div>
-          <div class="skeleton" style="width:45%"></div>
+          <div class="skeleton" style="width:72%"></div>
+          <div class="skeleton" style="width:48%"></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Limits -->
-  <section class="sec sec--rule" id="limits">
+  <!-- ===================== Trust ===================== -->
+  <section class="sec" id="trust">
     <div class="shell">
-      <div class="prose reveal" style="margin-bottom:12px;">
-        <h2>What this cannot do</h2>
+      <div class="sec__head rv">
+        <p class="eyebrow">Why the numbers hold</p>
+        <h2>Built so the result survives being checked.</h2>
+      </div>
+
+      <div class="trust-grid rv-s">
+        <div class="tcell">
+          <span class="tcell__i" aria-hidden="true">1</span>
+          <h3>Chronological splits</h3>
+          <p>Every validation sequence postdates every training sequence. A shuffled split is the most common way a seismic forecast turns out to be an artefact.</p>
+        </div>
+        <div class="tcell">
+          <span class="tcell__i" aria-hidden="true">2</span>
+          <h3>Leak-free preprocessing</h3>
+          <p>Imputation, winsorising and scaling are refitted inside each fold from that fold's training rows alone.</p>
+        </div>
+        <div class="tcell">
+          <span class="tcell__i" aria-hidden="true">3</span>
+          <h3>Naive baselines included</h3>
+          <p>Climatology and persistence are scored alongside every model, so skill is measured against something, not asserted.</p>
+        </div>
+        <div class="tcell">
+          <span class="tcell__i" aria-hidden="true">4</span>
+          <h3>Cross-language verification</h3>
+          <p>The browser reimplementation is replayed against Python on 60 held-out sequences: 1,620 feature values and 240 predictions.</p>
+        </div>
+        <div class="tcell">
+          <span class="tcell__i" aria-hidden="true">5</span>
+          <h3>Fully reproducible</h3>
+          <p>One seed, one command, one file. Re-running the analysis reproduces every number on this page and in the document.</p>
+        </div>
+        <div class="tcell">
+          <span class="tcell__i" aria-hidden="true">6</span>
+          <h3>Limits published</h3>
+          <p>What the model cannot do is given its own section rather than buried in a footnote.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== Limits ===================== -->
+  <section class="sec" id="limits">
+    <div class="shell">
+      <div class="sec__head rv">
+        <p class="eyebrow">Stated plainly</p>
+        <h2>What this cannot do.</h2>
         <p class="lede">A forecasting paper is only as trustworthy as the list of things it refuses to claim.</p>
       </div>
-      <div class="limits reveal">
-        <div>
-          <span class="tag">Not a prediction system</span>
+
+      <div class="limits rv-s">
+        <div class="limit">
+          <span class="limit__t">Not a prediction system</span>
           <h3>It does not say when or where</h3>
-          <p>The model estimates the magnitude a mainshock would reach given a foreshock sequence already in progress. It does not forecast the time or the location of an earthquake, and nothing here should be read as an early-warning capability.</p>
+          <p>The model estimates the magnitude a mainshock would reach given a foreshock sequence already in progress. It forecasts neither the time nor the location of an earthquake, and nothing here is an early-warning capability.</p>
         </div>
-        <div>
-          <span class="tag">Foreshocks are rare</span>
+        <div class="limit">
+          <span class="limit__t">Foreshocks are rare</span>
           <h3>Most large events arrive unannounced</h3>
-          <p>Of 3,261 candidate mainshocks, only 535 had enough catalogued activity in the preceding fortnight to support a forecast at all. A foreshock-based method is silent for the great majority of damaging earthquakes.</p>
+          <p>Of 3,261 candidate mainshocks, only 535 had enough catalogued activity in the preceding fortnight to support a forecast at all. The method is silent for the great majority of damaging earthquakes.</p>
         </div>
-        <div>
-          <span class="tag">Detection, not seismicity</span>
+        <div class="limit">
+          <span class="limit__t">Detection, not seismicity</span>
           <h3>The record grew with the network</h3>
-          <p>Recorded events rise sharply through the 1970s and after, tracking the expansion of the monitoring network rather than a change in the ground. Any temporal trend in the catalogue confounds the two.</p>
+          <p>Recorded events rise sharply through the 1970s and after, tracking the expansion of the monitoring network rather than a change in the ground. Any temporal trend confounds the two.</p>
         </div>
-        <div>
-          <span class="tag">One fault layer</span>
+        <div class="limit">
+          <span class="limit__t">One fault layer</span>
           <h3>Fault distance is only as good as the map</h3>
-          <p>Distances are measured to fault lines digitised in QGIS, and the browser resolves a distance by taking the nearest of the 797 points the catalogue uses. That reproduces the mapped assignment for 99.7% of events and is at most 0.24 km further out for the rest, but a fault absent from the layer is invisible to the model.</p>
-        </div>
-        <div>
-          <span class="tag">Thin data</span>
-          <h3>Eight major events in the whole record</h3>
-          <p>Only eight sequences in the modelling set end in a magnitude 7.0 or greater mainshock. Class agreement measured by Cohen's kappa is near zero, and the three-class forecast collapses onto the common class.</p>
+          <p>Distances are measured to fault lines digitised in QGIS. A fault absent from that layer is invisible to the model, and the browser approximates the assignment from 797 mapped points.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Team -->
-  <section class="sec sec--rule" id="team">
+  <!-- ===================== Final CTA ===================== -->
+  <section class="finale">
     <div class="shell">
-      <div class="rail-grid reveal">
-        <dl class="rail">
-          <dt>Degree</dt><dd>BS Civil Engineering</dd>
-          <dt>Year</dt><dd>2026</dd>
-          <dt>Goals</dt><dd>SDG 9 and 11</dd>
-        </dl>
-        <div class="prose">
-          <p class="eyebrow">Lyceum of the Philippines University, Cavite</p>
-          <h2>A Machine Learning Model for Forecasting Mainshock Magnitudes Using PHIVOLCS Foreshock Data</h2>
-          <p>Submitted to the Faculty of the College of Engineering and Architecture in partial fulfilment of the requirements for the degree of Bachelor of Science in Civil Engineering.</p>
+      <div class="finale__box rv">
+        <p class="pill"><span class="dot" aria-hidden="true"></span> Open and reproducible</p>
+        <h2>See what the model makes of your own sequence.</h2>
+        <p class="lede">Enter a handful of foreshocks, pick a model, and read the forecast with its uncertainty. Everything runs in your browser, nothing is uploaded.</p>
+        <div class="cta-row" style="justify-content:center;">
+          <a class="btn btn--primary" href="#lab" data-magnetic>Run the model <span class="arw" aria-hidden="true">&rsaquo;</span></a>
+          <a class="btn btn--ghost" href="https://github.com/alexandernoveno/Forecasting-Magnitude-" rel="noopener">Read the code</a>
         </div>
       </div>
+    </div>
+  </section>
 
-      <div class="roster reveal">
-        <div class="person">
-          <div class="person__n">Loui Cris C. Atienza</div>
-          <div class="person__r">Researcher</div>
+  <!-- ===================== Authors ===================== -->
+  <section class="sec" id="authors">
+    <div class="shell">
+      <div class="meet">
+        <div class="prose rv">
+          <p class="eyebrow">The study</p>
+          <h2>A Machine Learning Model for Forecasting Mainshock Magnitudes Using PHIVOLCS Foreshock Data</h2>
+          <p>Submitted to the Faculty of the College of Engineering and Architecture, Lyceum of the Philippines University, Cavite, in partial fulfilment of the requirements for the degree of Bachelor of Science in Civil Engineering.</p>
+          <dl class="dl">
+            <div><dt>Institution</dt><dd>LPU Cavite, College of Engineering and Architecture</dd></div>
+            <div><dt>Degree</dt><dd>BS Civil Engineering, 2026</dd></div>
+            <div><dt>Sustainable Development Goals</dt><dd>SDG 9 and SDG 11</dd></div>
+            <div><dt>Source code</dt><dd><a href="https://github.com/alexandernoveno/Forecasting-Magnitude-" rel="noopener">github.com/alexandernoveno</a></dd></div>
+          </dl>
         </div>
-        <div class="person">
-          <div class="person__n">Alexander Jr. R. Noveno</div>
-          <div class="person__r">Researcher</div>
-        </div>
-        <div class="person">
-          <div class="person__n">Joseph Lorenz B. Pajarin</div>
-          <div class="person__r">Researcher</div>
+
+        <div class="rv">
+          <div class="people">
+            <div class="person">
+              <span class="person__a" aria-hidden="true">LA</span>
+              <span class="person__n">Loui Cris C. Atienza</span>
+              <span class="person__r">Researcher</span>
+            </div>
+            <div class="person">
+              <span class="person__a" aria-hidden="true">AN</span>
+              <span class="person__n">Alexander Jr. R. Noveno</span>
+              <span class="person__r">Researcher</span>
+            </div>
+            <div class="person">
+              <span class="person__a" aria-hidden="true">JP</span>
+              <span class="person__n">Joseph Lorenz B. Pajarin</span>
+              <span class="person__r">Researcher</span>
+            </div>
+          </div>
+          <p class="help" style="margin-top:18px;">Catalogue source: PHIVOLCS earthquake bulletin, 1907 to 2026. Fault lines mapped in QGIS. Official earthquake advisories come from PHIVOLCS, not from this page.</p>
         </div>
       </div>
     </div>
@@ -1016,562 +1238,178 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 </main>
 
 <footer class="foot">
-  <div class="shell foot__in">
-    <span>Catalogue source: PHIVOLCS earthquake bulletin, 1907 to 2026</span>
-    <span>College of Engineering and Architecture</span>
+  <div class="shell">
+    <div class="foot__grid">
+      <div>
+        <a class="brand" href="#top">
+          <span class="brand__mark" aria-hidden="true"><span></span></span>
+          Foreshock to Mainshock
+        </a>
+        <p class="foot__note">Forecasting mainshock magnitude from Philippine foreshock sequences. An undergraduate thesis, published open and reproducible.</p>
+      </div>
+      <div>
+        <h4>Sections</h4>
+        <ul>
+          <li><a href="#scope">Scope</a></li>
+          <li><a href="#record">Record</a></li>
+          <li><a href="#approach">Approach</a></li>
+          <li><a href="#results">Results</a></li>
+          <li><a href="#lab">Forecaster</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Project</h4>
+        <ul>
+          <li><a href="https://github.com/alexandernoveno/Forecasting-Magnitude-" rel="noopener">Repository</a></li>
+          <li><a href="#limits">Limitations</a></li>
+          <li><a href="#authors">Authors</a></li>
+          <li><a href="https://www.phivolcs.dost.gov.ph/" rel="noopener noreferrer" target="_blank">PHIVOLCS</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot__base">
+      <span>Lyceum of the Philippines University, Cavite</span>
+      <span>Not an earthquake warning service</span>
+    </div>
   </div>
 </footer>
 
 <script src="forecast.js"></script>
 <script>
+/* Interaction layer. Every animation is gated on prefers-reduced-motion and
+   only transform and opacity are animated, so nothing here forces layout. */
 (function () {
   "use strict";
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  /* Annual maximum magnitude and event count, 1960 to 2026, straight from the
-     cleaned catalogue. Each row is [year, maxMagnitude, eventCount]. */
-  var RECORD = [
-    [1960,6.7,12],[1961,6.1,6],[1962,6.5,39],[1963,6.3,41],[1964,5.8,66],
-    [1965,5.9,101],[1966,7.7,71],[1967,6.0,80],[1968,7.3,123],[1969,6.1,181],
-    [1970,7.8,228],[1971,6.5,125],[1972,7.3,282],[1973,6.5,212],[1974,5.9,156],
-    [1975,6.3,374],[1976,7.9,167],[1977,7.2,252],[1978,5.7,307],[1979,5.9,213],
-    [1980,6.3,274],[1981,5.7,254],[1982,5.6,213],[1983,6.5,309],[1984,6.1,224],
-    [1985,6.1,122],[1986,6.2,105],[1987,6.0,175],[1988,5.6,111],[1989,6.6,111],
-    [1990,7.8,506],[1991,6.4,296],[1992,7.3,165],[1993,6.6,136],[1994,7.1,172],
-    [1995,7.3,285],[1996,7.0,375],[1997,6.7,251],[1998,7.0,250],[1999,6.8,262],
-    [2000,6.4,221],[2001,7.2,163],[2002,6.8,137],[2003,6.8,168],[2004,6.2,204],
-    [2005,6.9,174],[2006,7.1,237],[2007,6.6,243],[2008,6.5,415],[2009,7.5,303],
-    [2010,7.1,360],[2011,6.7,243],[2012,7.6,488],[2013,7.2,358],[2014,6.4,408],
-    [2015,6.1,256],[2016,6.5,297],[2017,7.2,325],[2018,7.0,256],[2019,6.9,526],
-    [2020,6.6,465],[2021,7.1,480],[2022,7.0,542],[2023,7.4,860],[2024,7.1,697],
-    [2025,7.4,700],[2026,7.8,272]
-  ];
+  /* ---- Navigation --------------------------------------------------------- */
+  var nav = document.getElementById("nav");
+  var burger = document.getElementById("burger");
+  var drawer = document.getElementById("drawer");
 
-  var ROWS = 4;
-  var canvas = document.getElementById("drum");
-  if (!canvas) { return; }
-  var ctx = canvas.getContext("2d");
-
-  function token(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
-
-  /* Deterministic jitter, so the trace is identical on every render. */
-  function wobble(seed) {
-    var x = Math.sin(seed * 12.9898) * 43758.5453;
-    return x - Math.floor(x) - 0.5;
-  }
-
-  var width = 0, height = 0, progress = 0;
-
-  function layout() {
-    var box = canvas.getBoundingClientRect();
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    width = Math.max(box.width, 240);
-    height = Math.round(Math.min(Math.max(width * 0.62, 220), 340));
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
-    canvas.style.height = height + "px";
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  function draw() {
-    var ink = token("--ink");
-    var rule = token("--rule");
-    var accent = token("--accent");
-    var mute = token("--mute");
-
-    ctx.clearRect(0, 0, width, height);
-
-    var padL = 42, padR = 10, padT = 10, padB = 8;
-    var plotW = width - padL - padR;
-    var rowH = (height - padT - padB) / ROWS;
-    var perRow = Math.ceil(RECORD.length / ROWS);
-    var shown = Math.floor(RECORD.length * progress);
-
-    for (var r = 0; r < ROWS; r++) {
-      var baseY = padT + rowH * r + rowH * 0.66;
-
-      /* Drum baseline */
-      ctx.strokeStyle = rule;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(padL, Math.round(baseY) + 0.5);
-      ctx.lineTo(padL + plotW, Math.round(baseY) + 0.5);
-      ctx.stroke();
-
-      var startIdx = r * perRow;
-      var endIdx = Math.min(startIdx + perRow, RECORD.length);
-      if (startIdx >= RECORD.length) { continue; }
-
-      /* Row year label */
-      ctx.fillStyle = mute;
-      ctx.font = "9px 'IBM Plex Mono', monospace";
-      ctx.textAlign = "right";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(RECORD[startIdx][0]), padL - 8, baseY);
-
-      /* The trace itself */
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = 1.1;
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-
-      var span = endIdx - startIdx;
-      var stepX = plotW / (span || 1);
-      var drewAny = false;
-
-      for (var i = startIdx; i < endIdx; i++) {
-        if (i >= shown) { break; }
-        var rec = RECORD[i];
-        var localX = padL + (i - startIdx + 0.5) * stepX;
-        /* Amplitude from magnitude above the moderate threshold. */
-        var amp = Math.max(rec[1] - 5.2, 0.05) / 2.7 * (rowH * 0.56);
-        /* Sub-year texture, denser where the year logged more events. */
-        var ticks = 9;
-        for (var k = 0; k < ticks; k++) {
-          var t = k / (ticks - 1);
-          var x = localX + (t - 0.5) * stepX;
-          var envelope = Math.exp(-Math.pow((t - 0.5) * 3.1, 2));
-          var noise = wobble(i * 17.3 + k * 3.7) * 0.9 + Math.sin(k * 2.1 + i) * 0.55;
-          var y = baseY - noise * amp * envelope;
-          if (!drewAny) { ctx.moveTo(x, y); drewAny = true; }
-          else { ctx.lineTo(x, y); }
-        }
-      }
-      if (drewAny) { ctx.stroke(); }
-
-      /* Mark the years that reached magnitude 7.5 or more. */
-      for (var j = startIdx; j < endIdx; j++) {
-        if (j >= shown) { break; }
-        if (RECORD[j][1] < 7.5) { continue; }
-        var mx = padL + (j - startIdx + 0.5) * stepX;
-        var my = baseY - Math.max(RECORD[j][1] - 5.2, 0.05) / 2.7 * (rowH * 0.56) - 4;
-        ctx.fillStyle = accent;
-        ctx.beginPath();
-        ctx.arc(mx, my, 2.4, 0, Math.PI * 2);
-        ctx.fill();
-      }
+  var lastStuck = null;
+  function onScroll() {
+    var stuck = window.scrollY > 12;
+    if (stuck !== lastStuck) {
+      nav.classList.toggle("is-stuck", stuck);
+      lastStuck = stuck;
     }
   }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
 
-  function render() { layout(); draw(); }
+  function setDrawer(open) {
+    burger.setAttribute("aria-expanded", open ? "true" : "false");
+    burger.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    document.body.classList.toggle("is-locked", open);
+    if (open) {
+      drawer.hidden = false;
+      requestAnimationFrame(function () { drawer.classList.add("is-open"); });
+    } else {
+      drawer.classList.remove("is-open");
+      window.setTimeout(function () { if (!drawer.classList.contains("is-open")) { drawer.hidden = true; } }, 340);
+    }
+  }
+  burger.addEventListener("click", function () {
+    setDrawer(burger.getAttribute("aria-expanded") !== "true");
+  });
+  drawer.addEventListener("click", function (e) {
+    if (e.target.tagName === "A") { setDrawer(false); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && burger.getAttribute("aria-expanded") === "true") { setDrawer(false); }
+  });
 
-  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-  var started = false;
+  /* ---- Reveals ------------------------------------------------------------ */
+  var targets = document.querySelectorAll(".rv, .rv-s");
+  if (!reduced.matches && "IntersectionObserver" in window) {
+    /* The hiding rule is gated on .has-js so a script failure can never strand
+       content at opacity zero. */
+    document.documentElement.classList.add("has-js");
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) { entry.target.classList.add("in"); io.unobserve(entry.target); }
+      });
+    }, { rootMargin: "0px 0px -6% 0px", threshold: 0.05 });
+    targets.forEach(function (el) { io.observe(el); });
+  } else {
+    targets.forEach(function (el) { el.classList.add("in"); });
+  }
 
-  function run() {
-    if (started) { return; }
-    started = true;
-    if (reduced.matches) { progress = 1; render(); return; }
-    var t0 = null;
-    var DURATION = 1700;
+  /* ---- Counters ----------------------------------------------------------- */
+  function runCounter(el) {
+    var target = parseFloat(el.dataset.count);
+    /* The markup already holds the real figure; zero it only now, so the count
+       is a flourish on top of correct content rather than a precondition. */
+    var decimals = parseInt(el.dataset.decimals || "0", 10);
+    var suffix = el.dataset.suffix || "";
+    if (reduced.matches) {
+      el.textContent = target.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + suffix;
+      return;
+    }
+    var start = null, DUR = 1500;
     function frame(ts) {
-      if (t0 === null) { t0 = ts; }
-      var p = Math.min((ts - t0) / DURATION, 1);
-      progress = 1 - Math.pow(1 - p, 3);
-      render();
+      if (start === null) { start = ts; }
+      var p = Math.min((ts - start) / DUR, 1);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = (target * eased).toLocaleString(undefined, {
+        minimumFractionDigits: decimals, maximumFractionDigits: decimals
+      }) + suffix;
       if (p < 1) { requestAnimationFrame(frame); }
     }
     requestAnimationFrame(frame);
   }
-
-  var resizeTimer = null;
-  window.addEventListener("resize", function () {
-    window.clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(render, 140);
-  });
-
-  /* Redraw when the viewer flips theme, so the trace picks up new tokens. */
-  var scheme = window.matchMedia("(prefers-color-scheme: dark)");
-  if (scheme.addEventListener) { scheme.addEventListener("change", function () { render(); }); }
-
-  layout();
-  progress = reduced.matches ? 1 : 0;
-  draw();
-  if (document.readyState === "complete") { run(); }
-  else { window.addEventListener("load", run); }
-
-  /* Section reveals. The hiding rule is gated on .has-js, added only once we
-     know the observer is available, so the content can never be stranded at
-     opacity 0 by a script failure. */
-  if (!reduced.matches && "IntersectionObserver" in window) {
-    document.documentElement.classList.add("has-js");
-    var io = new IntersectionObserver(function (entries) {
+  var counters = document.querySelectorAll("[data-count]");
+  if ("IntersectionObserver" in window) {
+    var cio = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("is-in");
-          io.unobserve(entry.target);
-        }
+        if (entry.isIntersecting) { runCounter(entry.target); cio.unobserve(entry.target); }
       });
-    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.06 });
-    document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+    }, { threshold: 0.4 });
+    counters.forEach(function (el) { cio.observe(el); });
   } else {
-    document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("is-in"); });
+    counters.forEach(runCounter);
+  }
+
+  /* ---- Pointer-following card wash ---------------------------------------- */
+  if (!reduced.matches && window.matchMedia("(hover: hover)").matches) {
+    document.querySelectorAll("[data-tilt]").forEach(function (card) {
+      card.addEventListener("pointermove", function (e) {
+        var r = card.getBoundingClientRect();
+        card.style.setProperty("--mx", ((e.clientX - r.left) / r.width * 100) + "%");
+        card.style.setProperty("--my", ((e.clientY - r.top) / r.height * 100) + "%");
+      });
+    });
+
+    /* Magnetic pull on the primary calls to action, kept small enough to read
+       as responsiveness rather than as a trick. */
+    document.querySelectorAll("[data-magnetic]").forEach(function (btn) {
+      btn.addEventListener("pointermove", function (e) {
+        var r = btn.getBoundingClientRect();
+        var dx = (e.clientX - (r.left + r.width / 2)) * 0.18;
+        var dy = (e.clientY - (r.top + r.height / 2)) * 0.28;
+        btn.style.transform = "translate(" + dx.toFixed(2) + "px," + dy.toFixed(2) + "px)";
+      });
+      btn.addEventListener("pointerleave", function () { btn.style.transform = ""; });
+    });
+
+    /* Hero parallax, driven from a single rAF-throttled scroll listener. */
+    var stage = document.querySelector("[data-parallax]");
+    if (stage) {
+      var ticking = false;
+      window.addEventListener("scroll", function () {
+        if (ticking) { return; }
+        ticking = true;
+        requestAnimationFrame(function () {
+          var y = Math.min(window.scrollY, 700);
+          stage.style.transform = "translate3d(0," + (y * -0.045).toFixed(2) + "px,0)";
+          ticking = false;
+        });
+      }, { passive: true });
+    }
   }
 })();
-
-  /* =======================================================================
-     Forecast lab
-     Loads the exported models and the catalogue on demand, recomputes the 22
-     features from the events on screen, and runs the selected model. The
-     feature maths lives in forecast.js and is checked against Python by
-     verify_bundle.cjs; nothing here reimplements it.
-     ======================================================================= */
-  (function () {
-    var section = document.getElementById("lab");
-    if (!section || typeof Forecast === "undefined") { return; }
-
-    var el = {
-      state: document.getElementById("state"),
-      readout: document.getElementById("readout"),
-      rows: document.getElementById("rows"),
-      pick: document.getElementById("pick"),
-      pickWrap: document.getElementById("pickWrap"),
-      customWrap: document.getElementById("customWrap"),
-      models: document.getElementById("models"),
-      msg: document.getElementById("msg"),
-      lat: document.getElementById("lat"),
-      lon: document.getElementById("lon"),
-      when: document.getElementById("when"),
-    };
-    var bundle = null, catalogue = null, loading = false, chosen = "random_forest";
-
-    function source() {
-      var hit = document.querySelector('input[name="source"]:checked');
-      return hit ? hit.value : "recorded";
-    }
-
-    function setMsg(text, isError) {
-      el.msg.textContent = text || "";
-      el.msg.className = "msg" + (isError ? " msg--error" : "");
-    }
-
-    /* ---- data loading, with real loading and error states ---------------- */
-    function load() {
-      if (bundle || loading) { return Promise.resolve(); }
-      loading = true;
-      return Promise.all([
-        fetch("model_bundle.json").then(function (r) {
-          if (!r.ok) { throw new Error("model_bundle.json " + r.status); }
-          return r.json();
-        }),
-        fetch("catalogue.json").then(function (r) {
-          if (!r.ok) { throw new Error("catalogue.json " + r.status); }
-          return r.json();
-        }),
-      ]).then(function (parts) {
-        bundle = parts[0];
-        catalogue = parts[1];
-        loading = false;
-        buildModelChoices();
-        buildExampleChoices();
-        syncSegments();
-        loadExample(bundle.examples[0]);
-        idle("Pick a sequence and a model, then forecast.");
-      }).catch(function (err) {
-        loading = false;
-        el.readout.innerHTML = "";
-        var p = document.createElement("p");
-        p.className = "readout__state msg--error";
-        p.textContent = "The models could not be loaded (" + err.message
-          + "). Reload the page to try again.";
-        el.readout.appendChild(p);
-      });
-    }
-
-    function buildModelChoices() {
-      el.models.innerHTML = "";
-      Object.keys(bundle.models).forEach(function (key, i) {
-        var m = bundle.models[key];
-        var label = document.createElement("label");
-        var input = document.createElement("input");
-        input.type = "radio";
-        input.name = "model";
-        input.value = key;
-        input.checked = i === 0;
-        var span = document.createElement("span");
-        span.innerHTML = m.label + ' <span class="rmse">' + m.rmse.toFixed(3) + "</span>";
-        label.appendChild(input);
-        label.appendChild(span);
-        label.title = m.note + " Test RMSE " + m.rmse.toFixed(3) + " magnitude units.";
-        input.addEventListener("change", function () { chosen = key; });
-        el.models.appendChild(label);
-      });
-      chosen = Object.keys(bundle.models)[0];
-    }
-
-    function buildExampleChoices() {
-      el.pick.innerHTML = "";
-      bundle.examples.forEach(function (ex) {
-        var opt = document.createElement("option");
-        opt.value = ex.id;
-        opt.textContent = ex.when + ", " + ex.epicentre[0].toFixed(2) + " N "
-          + ex.epicentre[1].toFixed(2) + " E, " + ex.events.length + " foreshocks";
-        el.pick.appendChild(opt);
-      });
-      el.pick.addEventListener("change", function () {
-        var ex = bundle.examples.filter(function (e) { return e.id === el.pick.value; })[0];
-        if (ex) { loadExample(ex); }
-      });
-    }
-
-    /* ---- the event editor ------------------------------------------------ */
-    var COLUMNS = [
-      { key: "before", step: "0.01", min: "0", max: "14" },
-      { key: "mag", step: "0.1", min: "0", max: "10" },
-      { key: "lat", step: "0.01", min: "0", max: "25" },
-      { key: "lon", step: "0.01", min: "110", max: "140" },
-      { key: "depth", step: "1", min: "0", max: "750" },
-    ];
-
-    function addRow(values) {
-      var tr = document.createElement("tr");
-      COLUMNS.forEach(function (col) {
-        var td = document.createElement("td");
-        var input = document.createElement("input");
-        input.type = "number";
-        input.step = col.step;
-        input.min = col.min;
-        input.max = col.max;
-        input.dataset.key = col.key;
-        input.value = values ? values[col.key] : "";
-        input.setAttribute("aria-label", col.key);
-        td.appendChild(input);
-        tr.appendChild(td);
-      });
-      var last = document.createElement("td");
-      var del = document.createElement("button");
-      del.type = "button";
-      del.className = "rowdel";
-      del.textContent = "x";
-      del.setAttribute("aria-label", "Remove this event");
-      del.addEventListener("click", function () { tr.remove(); });
-      last.appendChild(del);
-      tr.appendChild(last);
-      el.rows.appendChild(tr);
-    }
-
-    function loadExample(ex) {
-      el.rows.innerHTML = "";
-      ex.events.forEach(function (e) {
-        addRow({ before: e.before.toFixed(2), mag: e.mag, lat: e.lat, lon: e.lon, depth: e.depth });
-      });
-      el.lat.value = ex.epicentre[0];
-      el.lon.value = ex.epicentre[1];
-      if (ex.iso) { el.when.value = ex.iso; }
-      section.dataset.actual = ex.actual;
-      setMsg("");
-    }
-
-    function readEvents() {
-      var out = [];
-      Array.prototype.forEach.call(el.rows.querySelectorAll("tr"), function (tr) {
-        var row = {};
-        var ok = true;
-        Array.prototype.forEach.call(tr.querySelectorAll("input"), function (input) {
-          var v = parseFloat(input.value);
-          if (!isFinite(v)) { ok = false; }
-          row[input.dataset.key] = v;
-        });
-        if (ok) { out.push(row); }
-      });
-      return out;
-    }
-
-    /* ---- running it ------------------------------------------------------ */
-    function daysFromDate(value) {
-      var origin = Date.parse(catalogue.origin);
-      var target = Date.parse(value + "T00:00:00Z");
-      if (!isFinite(target)) { return null; }
-      return (target - origin) / 86400000;
-    }
-
-    function classify(m) {
-      if (m < 5.0) { return { text: "Below the study threshold", strong: false }; }
-      if (m < 6.0) { return { text: "Moderate, 5.0 to 5.9", strong: false }; }
-      if (m < 7.0) { return { text: "Strong, 6.0 to 6.9", strong: true }; }
-      return { text: "Major, 7.0 and above", strong: true };
-    }
-
-    function idle(text) {
-      el.readout.innerHTML = "";
-      var p = document.createElement("p");
-      p.className = "readout__state";
-      p.textContent = text;
-      el.readout.appendChild(p);
-    }
-
-    function run() {
-      setMsg("");
-      var events = readEvents();
-      if (events.length < bundle.min_foreshocks) {
-        setMsg("The model needs at least " + bundle.min_foreshocks
-          + " complete events in the window. Fill in or remove any partial rows.", true);
-        return;
-      }
-      var lat = parseFloat(el.lat.value), lon = parseFloat(el.lon.value);
-      if (!isFinite(lat) || !isFinite(lon)) {
-        setMsg("Enter a latitude and longitude for the sequence.", true);
-        return;
-      }
-      /* A recorded sequence carries its own mainshock time; only a custom
-         sequence takes the time from the date field. */
-      var tEnd;
-      if (source() === "recorded") {
-        var ex = bundle.examples.filter(function (e) { return e.id === el.pick.value; })[0];
-        if (!ex) { setMsg("Pick a recorded sequence.", true); return; }
-        lat = ex.epicentre[0];
-        lon = ex.epicentre[1];
-        tEnd = ex.t_end;
-      } else {
-        tEnd = daysFromDate(el.when.value);
-      }
-      if (tEnd === null || !isFinite(tEnd)) {
-        setMsg("Enter a valid forecast date.", true);
-        return;
-      }
-
-      var context = Forecast.regionalContext(catalogue, lat, lon, tEnd, bundle);
-      var sorted = events.slice().sort(function (a, b) { return b.before - a.before; });
-      var result;
-      try {
-        result = Forecast.forecast({
-          bundle: bundle, model: chosen, events: sorted,
-          lat: lat, lon: lon, context: context,
-        });
-      } catch (err) {
-        setMsg("The forecast could not be computed: " + err.message, true);
-        return;
-      }
-      render(result, sorted, context);
-    }
-
-    function render(result, events, context) {
-      var model = bundle.models[chosen];
-      var m = result.magnitude;
-      var band = classify(m);
-      var actual = source() === "recorded" ? parseFloat(section.dataset.actual) : NaN;
-
-      el.readout.innerHTML = "";
-      var frag = document.createDocumentFragment();
-
-      var head = document.createElement("div");
-      head.innerHTML = '<span class="readout__mag">' + m.toFixed(2) + "</span>"
-        + '<span class="readout__band">Forecast mainshock magnitude. Typical error for '
-        + model.label + " is plus or minus " + model.rmse.toFixed(2) + ", so read this as "
-        + (m - model.rmse).toFixed(2) + " to " + (m + model.rmse).toFixed(2) + ".</span>";
-      var chip = document.createElement("span");
-      chip.className = "readout__class" + (band.strong ? " is-strong" : "");
-      chip.textContent = band.text;
-      head.appendChild(chip);
-      frag.appendChild(head);
-
-      var kv = document.createElement("div");
-      kv.className = "kv";
-      var items = [
-        ["Model", model.label],
-        ["Skill vs. average", (model.skill > 0 ? "+" : "") + model.skill.toFixed(1) + "%"],
-        ["Events in window", String(events.length)],
-        ["Largest foreshock", "M " + Math.max.apply(null, events.map(function (e) { return e.mag; })).toFixed(1)],
-      ];
-      if (result.raw) {
-        var bIdx = bundle.features.indexOf("b_mlk");
-        var b = result.raw[bIdx];
-        items.push(["b-value", isFinite(b) ? b.toFixed(3) : "not estimable"]);
-        items.push(["Days since regional M 6.5",
-          Math.round(result.raw[bundle.features.indexOf("T_elaps65")]).toLocaleString()]);
-      }
-      if (isFinite(actual)) {
-        items.push(["Observed magnitude", "M " + actual.toFixed(1)]);
-        items.push(["Error", (m - actual >= 0 ? "+" : "") + (m - actual).toFixed(2)]);
-      }
-      items.forEach(function (pair) {
-        var cell = document.createElement("div");
-        var k = document.createElement("span");
-        k.className = "k";
-        k.textContent = pair[0];
-        var v = document.createElement("span");
-        v.className = "v";
-        v.textContent = pair[1];
-        cell.appendChild(k);
-        cell.appendChild(v);
-        kv.appendChild(cell);
-      });
-      frag.appendChild(kv);
-
-      var caution = document.createElement("p");
-      caution.className = "caution";
-      caution.innerHTML = "<strong>This is a demonstrator, not a warning system.</strong> "
-        + "It estimates how large a mainshock would be if one follows this sequence. It says "
-        + "nothing about whether one will occur, or when, or where. The typical error is about "
-        + "half a magnitude unit, which spans the difference between a tremor and a damaging "
-        + "earthquake. Official advisories come from PHIVOLCS.";
-      frag.appendChild(caution);
-
-      el.readout.appendChild(frag);
-    }
-
-    /* Keep the selected pill in sync without :has(), so the state survives on
-       browsers that lack it rather than falling back to unreadable text. */
-    function syncSegments() {
-      Array.prototype.forEach.call(document.querySelectorAll(".seg label"), function (label) {
-        var input = label.querySelector("input");
-        label.classList.toggle("is-on", !!(input && input.checked));
-      });
-    }
-    document.addEventListener("change", function (e) {
-      if (e.target && e.target.matches && e.target.matches('.seg input')) { syncSegments(); }
-    });
-
-    /* ---- wiring ---------------------------------------------------------- */
-    Array.prototype.forEach.call(document.querySelectorAll('input[name="source"]'), function (input) {
-      input.addEventListener("change", function () {
-        var custom = source() === "custom";
-        el.customWrap.hidden = !custom;
-        el.pickWrap.hidden = custom;
-        if (!custom && bundle) {
-          var ex = bundle.examples.filter(function (e) { return e.id === el.pick.value; })[0];
-          if (ex) { loadExample(ex); }
-        }
-        setMsg("");
-      });
-    });
-    document.getElementById("addRow").addEventListener("click", function () {
-      if (!bundle) { return; }
-      addRow(null);
-    });
-    document.getElementById("run").addEventListener("click", function () {
-      if (!bundle) { setMsg("Still loading the models.", false); return; }
-      run();
-    });
-
-    /* Load when the section comes into view, so the first screen stays light.
-       An observer is the cheapest trigger but not a guaranteed one: it needs
-       the page to be rendering, and a backgrounded or occluded tab can defer
-       the callback indefinitely, which would leave this panel on its loading
-       skeleton forever. Touching any control and following a #lab link both
-       force the load as well. */
-    var started = false;
-    function begin() {
-      if (started) { return; }
-      started = true;
-      load();
-    }
-    if ("IntersectionObserver" in window) {
-      var io = new IntersectionObserver(function (entries) {
-        if (entries[0].isIntersecting) { io.disconnect(); begin(); }
-      }, { rootMargin: "400px" });
-      io.observe(section);
-    }
-    section.addEventListener("pointerdown", begin, { once: true });
-    section.addEventListener("focusin", begin, { once: true });
-    if (window.location.hash === "#lab") { begin(); }
-    window.addEventListener("hashchange", function () {
-      if (window.location.hash === "#lab") { begin(); }
-    });
-  })();
-
 </script>
-
+<script src="app.js"></script>
 </body>
 </html>
