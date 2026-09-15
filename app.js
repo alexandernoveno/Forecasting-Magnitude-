@@ -220,11 +220,11 @@
       if (bundle || loading) { return Promise.resolve(); }
       loading = true;
       return Promise.all([
-        fetch("model_bundle.json").then(function (r) {
+        fetch("model_bundle.json", { cache: "no-cache" }).then(function (r) {
           if (!r.ok) { throw new Error("model_bundle.json " + r.status); }
           return r.json();
         }),
-        fetch("catalogue.json").then(function (r) {
+        fetch("catalogue.json", { cache: "no-cache" }).then(function (r) {
           if (!r.ok) { throw new Error("catalogue.json " + r.status); }
           return r.json();
         }),
@@ -476,6 +476,12 @@
          implied. */
       if (bundle.occurrence && bundle.occurrence.cells) {
         frag.appendChild(buildProbability(bundle.occurrence));
+      } else {
+        var stale = document.createElement("p");
+        stale.className = "prob prob__note";
+        stale.textContent = "The occurrence table is missing from the loaded data, "
+          + "which means a cached copy is being served. Reload the page to fetch it.";
+        frag.appendChild(stale);
       }
 
       var caution = document.createElement("p");

@@ -265,6 +265,37 @@ def main() -> None:
           f"{len(vectors)} verification vectors")
 
     export_catalogue(cat_sorted)
+    stamp_script_versions()
+
+
+def stamp_script_versions() -> None:
+    """Version the script tags by content hash.
+
+    index.html, app.js and forecast.js are all served with max-age=600, so a
+    returning visitor can run yesterday's JavaScript against today's data. A
+    hash in the query string makes each deploy a distinct URL, which is the only
+    reliable way to retire a cached script. It is derived from the file content
+    rather than a counter, so it cannot drift out of step with what shipped.
+    """
+    import hashlib
+    import re
+
+    page = ROOT / "index.html"
+    if not page.exists():
+        return
+    html = page.read_text()
+    changed = []
+    for name in ("forecast.js", "app.js"):
+        target = ROOT / name
+        if not target.exists():
+            continue
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()[:10]
+        pattern = re.compile(r'src="' + re.escape(name) + r'(?:\?v=[0-9a-f]+)?"')
+        html, n = pattern.subn(f'src="{name}?v={digest}"', html)
+        if n:
+            changed.append(f"{name}={digest}")
+    page.write_text(html)
+    print("Stamped script versions: " + ", ".join(changed))
 
 
 def export_catalogue(cat_sorted) -> None:
