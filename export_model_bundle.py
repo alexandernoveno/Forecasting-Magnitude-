@@ -336,6 +336,7 @@ def occurrence_block(ea) -> dict:
     """
     import csv
     path = ea.CFG.TABLE_DIR / "t34_occurrence_skill.csv"
+    intervals = ea.CFG.TABLE_DIR / "t35_occurrence_intervals.csv"
     if not path.exists():
         return {}
     cells = []
@@ -356,7 +357,26 @@ def occurrence_block(ea) -> dict:
                 "bss": num("M Brier skill (%)"),
                 "verdict": row["Verdict"],
             })
+    # Attach the confidence intervals so the page can state its uncertainty
+    # rather than quoting a bare percentage.
+    if intervals.exists():
+        conf = int(round((1 - ea.CFG.ALPHA) * 100))
+        with open(intervals, newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                r = int(float(row["Radius (km)"]))
+                t = float(row["Threshold"].split("≥")[-1])
+                for cell in cells:
+                    if cell["radius"] == r and abs(cell["threshold"] - t) < 1e-9:
+                        cell["ci"] = row[f"Wilson {conf}% CI"]
+                        cell["moe"] = round(float(row["Margin of error (pp)"]), 2)
+                        cell["block_ci"] = row[f"Year-block {conf}% CI"]
+                        try:
+                            cell["block_moe"] = round(float(row["Block MoE (pp)"]), 2)
+                        except (TypeError, ValueError):
+                            cell["block_moe"] = None
+
     return {
+        "confidence": int(round((1 - ea.CFG.ALPHA) * 100)),
         "horizon_days": ea.CFG.HORIZON_DAYS,
         "lookback_days": ea.CFG.T_OBS_DAYS,
         "thresholds": list(ea.CFG.OCC_THRESHOLDS),

@@ -1752,6 +1752,81 @@ def fit_occurrence_models(datasets, seed=CFG.SEED, folds=CFG.CV_FOLDS, verbose=T
     return pd.DataFrame(results), fitted
 
 
+
+def wilson_interval(successes, trials, z=1.959963985):
+    """Wilson score interval for a proportion.
+
+    Wald's interval, the textbook p +/- z*sqrt(p(1-p)/n), is unusable here: at
+    the M 7.0 rate of roughly 0.4% it produces a lower bound below zero and its
+    coverage collapses when the count is small. Wilson stays inside [0, 1],
+    holds its nominal coverage down to single-digit counts, and is asymmetric in
+    the direction the data actually supports.
+    """
+    if trials <= 0:
+        return np.nan, np.nan, np.nan
+    p = successes / trials
+    denom = 1 + z * z / trials
+    centre = (p + z * z / (2 * trials)) / denom
+    half = (z / denom) * np.sqrt(p * (1 - p) / trials + z * z / (4 * trials * trials))
+    return max(0.0, centre - half), min(1.0, centre + half), half
+
+
+def block_bootstrap_rate(flags, years, n_boot=CFG.BOOTSTRAP_N, seed=CFG.SEED):
+    """Resample whole years, not individual anchors.
+
+    Wilson assumes independent trials. These anchors are not independent: they
+    are overlapping space-time windows cut from one catalogue, and a single
+    productive swarm supplies many of them. Resampling years keeps each year's
+    anchors together, so the interval reflects how much genuinely independent
+    information the record holds rather than how many rows were extracted.
+    """
+    flags = np.asarray(flags, int)
+    years = np.asarray(years)
+    unique = np.unique(years)
+    if unique.size < 3:
+        return np.nan, np.nan
+    groups = [flags[years == y] for y in unique]
+    rng = np.random.default_rng(seed)
+    draws = np.empty(n_boot)
+    for b in range(n_boot):
+        pick = rng.integers(0, len(groups), len(groups))
+        pooled = np.concatenate([groups[i] for i in pick])
+        draws[b] = pooled.mean() if pooled.size else np.nan
+    return float(np.nanpercentile(draws, 2.5)), float(np.nanpercentile(draws, 97.5))
+
+
+def occurrence_intervals(datasets, alpha=CFG.ALPHA) -> pd.DataFrame:
+    """Every occurrence rate with its confidence interval and margin of error.
+
+    Two intervals are given because they answer different questions. Wilson is
+    the standard interval for a proportion and is what a reader will expect.
+    The year-block interval drops the independence assumption that Wilson needs
+    and is the wider, more defensible one; where they diverge, quote the block
+    interval.
+    """
+    conf = int(round((1 - alpha) * 100))
+    rows = []
+    for radius, data in datasets.items():
+        years = data["AnchorTime"].dt.year.to_numpy()
+        for threshold in CFG.OCC_THRESHOLDS:
+            flags = data[f"y{threshold:g}"].to_numpy(int)
+            n, k = flags.size, int(flags.sum())
+            lo, hi, half = wilson_interval(k, n)
+            blo, bhi = block_bootstrap_rate(flags, years)
+            rows.append({
+                "Radius (km)": radius,
+                "Threshold": f"M ≥ {threshold:g}",
+                "n anchors": n,
+                "n occurred": k,
+                "Rate (%)": 100 * k / n if n else np.nan,
+                f"Wilson {conf}% CI": f"{100 * lo:.1f} to {100 * hi:.1f}",
+                "Margin of error (pp)": 100 * half,
+                f"Year-block {conf}% CI": (f"{100 * blo:.1f} to {100 * bhi:.1f}"
+                                           if np.isfinite(blo) else "—"),
+                "Block MoE (pp)": (100 * (bhi - blo) / 2 if np.isfinite(blo) else np.nan),
+            })
+    return pd.DataFrame(rows)
+
 def reliability_table(prob, y, bins=5) -> pd.DataFrame:
     """Observed frequency against forecast probability, the calibration check.
 
@@ -2969,12 +3044,39 @@ def binary_alarm_table(y_true_mag, y_pred_mag, threshold=6.0) -> pd.DataFrame:
 # Greyscale-safe, 300 dpi, no chart junk: these have to survive a monochrome
 # thesis printer and a projector.
 # =============================================================================
-plt.rcParams.update({"font.family": "serif",
-                     "font.serif": ["Times New Roman", "DejaVu Serif"],
-                     "font.size": 9, "axes.linewidth": 0.8,
-                     "axes.spines.top": False, "axes.spines.right": False,
-                     "figure.dpi": 300, "savefig.dpi": 300, "savefig.bbox": "tight"})
-INK, ACCENT, FILL = "#1a1a1a", "#4a4a4a", "#c9c9c9"
+# Figures are shown on the landing page inside white plates, so they use the
+# page's own palette and a sans rather than the matplotlib default serif.
+# Helvetica Neue is chosen over the closer-looking Avenir Next for a dull
+# reason: this machine registers Avenir Next as a single face at weight 700, so
+# every label rendered bold and emphasis became impossible. Helvetica Neue
+# registers a true 400. Emphasis in these figures is therefore carried by
+# colour rather than weight, which is the more durable choice anyway.
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Helvetica Neue", "Helvetica", "DejaVu Sans"],
+    "font.size": 9.5,
+    "font.weight": "normal",
+    "axes.labelweight": "normal",
+    "axes.linewidth": 0.7,
+    "axes.edgecolor": "#cfd5cb",
+    "axes.labelcolor": "#454c46",
+    "axes.labelpad": 9,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "xtick.color": "#636c65", "ytick.color": "#636c65",
+    "xtick.labelsize": 8.8, "ytick.labelsize": 8.8,
+    "xtick.major.size": 3, "ytick.major.size": 3,
+    "xtick.major.width": 0.7, "ytick.major.width": 0.7,
+    "legend.frameon": False, "legend.fontsize": 8.2,
+    "figure.dpi": 300, "savefig.dpi": 300, "savefig.bbox": "tight",
+    "savefig.facecolor": "white", "figure.facecolor": "white",
+})
+INK = "#121612"        # body ink, matching the page
+ACCENT = "#b0392a"     # the single accent, reserved for what matters
+MUTED = "#636c65"      # secondary labels
+LINE = "#e3e7e0"       # hairlines
+FILL = "#c9cfc8"       # neutral bar body
+FILL_SOFT = "#d5dad2"  # bars that fail their benchmark, still legible
 
 
 def _save(fig, name):
@@ -3064,18 +3166,68 @@ def fig_importance(importance, top=15):
 
 
 def fig_leaderboard(board):
-    """Horizontal bars of test RMSE, with climatology marked as the reference."""
-    data = board.iloc[::-1]
-    fig, ax = plt.subplots(figsize=(6.2, 0.26 * len(data) + 1.2))
-    is_ref = data["Model"].str.contains("Climatology|Persistence")
-    ax.barh(data["Model"], data["RMSE"],
-            color=np.where(is_ref, "#e6e6e6", FILL), edgecolor=INK, linewidth=0.5)
+    """Test error for every model, ranked, with the baseline as the dividing line.
+
+    The chart has one job: show which models are worth anything. So the winner
+    is the only thing in the accent colour, the two naive baselines are drawn
+    hollow because they are references rather than results, and everything that
+    fails to beat climatology sits in the shaded region to the right of the
+    line. Values are printed at the bar ends, which removes the need to track
+    back to an axis and lets the axis itself recede.
+    """
+    data = board.iloc[::-1].reset_index(drop=True)       # best at the top
     ref = float(board.loc[board["Model"].str.startswith("Climatology"), "RMSE"].iloc[0])
-    ax.axvline(ref, ls="--", lw=0.9, color=ACCENT)
-    ax.annotate("climatology baseline", xy=(ref, len(data) - 0.5), xytext=(4, -6),
-                textcoords="offset points", fontsize=7.5, color=ACCENT)
-    ax.set_xlabel("Test RMSE (magnitude units) — lower is better")
-    ax.tick_params(axis="y", labelsize=8)
+    is_base = data["Model"].str.contains("Climatology|Persistence")
+    best = data["RMSE"].idxmin()
+
+    height = 0.30 * len(data) + 1.5
+    fig, ax = plt.subplots(figsize=(7.2, height))
+
+    # Everything slower than the baseline sits in a faintly shaded band.
+    ax.axvspan(ref, data["RMSE"].max() * 1.13, color="#f3e9e6", zorder=0)
+
+    colours, edges = [], []
+    for i, row in data.iterrows():
+        if is_base[i]:
+            colours.append("white"); edges.append("#b6bdb7")
+        elif i == best:
+            colours.append(ACCENT); edges.append(ACCENT)
+        elif row["RMSE"] < ref:
+            colours.append(FILL); edges.append(FILL)
+        else:
+            colours.append(FILL_SOFT); edges.append(FILL_SOFT)
+
+    bars = ax.barh(data["Model"], data["RMSE"], height=0.68,
+                   color=colours, edgecolor=edges, linewidth=0.9, zorder=3)
+
+    # Value at the end of every bar, in the bar's own visual weight.
+    span = data["RMSE"].max()
+    for i, (bar, value) in enumerate(zip(bars, data["RMSE"])):
+        ax.text(value + span * 0.012, bar.get_y() + bar.get_height() / 2,
+                f"{value:.3f}", va="center", ha="left", fontsize=8.4,
+                color=ACCENT if i == best else (MUTED if is_base[i] else INK),
+                zorder=4)
+
+    ax.axvline(ref, ls=(0, (4, 3)), lw=1.1, color="#9aa39c", zorder=2)
+    ax.annotate("climatology baseline", xy=(ref, len(data) - 0.28),
+                xytext=(7, 0), textcoords="offset points",
+                fontsize=8.4, color=MUTED, va="center")
+    ax.annotate("anything past this line adds nothing", xy=(ref, len(data) - 0.92),
+                xytext=(7, 0), textcoords="offset points",
+                fontsize=7.6, color="#a8766c", va="center")
+
+    ax.set_xlim(0, span * 1.13)
+    ax.set_xlabel("Test RMSE in magnitude units, lower is better")
+    ax.set_ylabel("")
+    ax.tick_params(axis="y", length=0, pad=6)
+    ax.tick_params(axis="x", pad=4)
+    for i, label in enumerate(ax.get_yticklabels()):
+        label.set_color(ACCENT if i == best else (MUTED if is_base[i] else INK))
+
+    ax.spines["left"].set_visible(False)
+    ax.spines["bottom"].set_color(LINE)
+    ax.xaxis.grid(True, color=LINE, lw=0.6, zorder=1)
+    ax.set_axisbelow(True)
     fig.tight_layout()
     return _save(fig, "fig_leaderboard.png")
 
@@ -3827,6 +3979,27 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  slug="t34_occurrence_skill", decimals=3,
                  int_columns=("Anchors", "Positives", "Folds scored"),
                  align={"Threshold": LEFT, "Verdict": LEFT}, landscape=True, font_size=Pt(8.5))
+
+    report.table(occurrence_intervals(occ_datasets),
+                 f"Probability of Occurrence With {int((1 - CFG.ALPHA) * 100)}% Confidence "
+                 "Intervals",
+                 "Rate is the observed frequency: of n anchors where a sequence was already "
+                 "under way, the proportion followed within "
+                 f"{CFG.HORIZON_DAYS:.0f} days by an independent earthquake of that size at "
+                 "that distance. The Wilson interval is the standard interval for a "
+                 "proportion and is reported because a reader will expect it; Wald's is "
+                 "unusable at these rates, returning a negative lower bound. The year-block "
+                 "interval resamples whole years instead of individual anchors, dropping the "
+                 "independence assumption Wilson requires: these anchors are overlapping "
+                 "windows cut from one catalogue and a single productive swarm supplies many "
+                 "of them. Where the two disagree, the block interval is the defensible one. "
+                 "Margin of error is the half-width of the corresponding interval, in "
+                 "percentage points.",
+                 slug="t35_occurrence_intervals", decimals=2,
+                 int_columns=("n anchors", "n occurred"),
+                 align={"Threshold": LEFT, f"Wilson {int((1 - CFG.ALPHA) * 100)}% CI": LEFT,
+                        f"Year-block {int((1 - CFG.ALPHA) * 100)}% CI": LEFT},
+                 landscape=True, font_size=Pt(8.5))
 
     if not run_models:
         _finish(doc, report, started)

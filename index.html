@@ -650,6 +650,10 @@ tbody tr.is-top td:first-child { color: var(--accent); font-weight: 600; }
 .prob tbody tr:last-child td { border-bottom: 0; }
 .prob td.v { font-weight: 600; color: var(--ink); }
 .prob td.thin { color: var(--mute); font-style: italic; }
+.prob .moe {
+  display: block; font-family: var(--f-mono); font-size: .68em;
+  color: var(--mute); font-style: normal; letter-spacing: -.02em; margin-top: 1px;
+}
 .prob__note { font-size: .78rem; color: var(--mute); line-height: 1.5; margin-top: 12px; }
 
 /* --- Motion --------------------------------------------------------------- */
@@ -1031,7 +1035,8 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <h3>Fault distance earns its place</h3>
           <p>Adding the distance from each foreshock to the nearest mapped fault lifted the best model from 21.4% to 23.6%. Three of the five fault features rank fifth, sixth and seventh of 27 by permutation importance. The other two measure nothing the model can use, and are reported as such.</p>
           <h3>Whether, not just how large</h3>
-          <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. Across nine combinations of magnitude and radius it beat the historical rate in one, by 3.4% Brier skill with a fold-to-fold spread several times that. The panel therefore reports the historical rates and says what the model achieved, rather than presenting a coin flip as a forecast.</p>
+          <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. Across nine combinations of magnitude and radius it beat the historical rate in one, by 3.4% Brier skill with a fold-to-fold spread several times that. The panel therefore reports the historical rates, each with its margin of error at 95% confidence.</p>
+          <p>Those intervals come from a bootstrap that resamples whole years rather than individual anchors. The standard Wilson interval assumes independent trials, and these are overlapping windows cut from one catalogue where a single productive swarm supplies many of them. Dropping that assumption roughly triples the margin of error, from 2.1 to 5.6 percentage points on the headline figure, which is the honest width.</p>
           <h3>Depth beats recurrence</h3>
           <p>The recurrent networks land barely ahead of the baseline and every tree ensemble beats them. With 428 training sequences of ten timesteps, there is not enough data for a recurrent architecture to pay for its parameters.</p>
         </div>
@@ -1437,6 +1442,6 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   }
 })();
 </script>
-<script src="app.js?v=f86e671af6"></script>
+<script src="app.js?v=477a993b82"></script>
 </body>
 </html>

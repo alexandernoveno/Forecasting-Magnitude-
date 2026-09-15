@@ -519,6 +519,7 @@
       wrap.appendChild(head);
 
       var table = document.createElement("table");
+      var conf = occ.confidence || 95;
       var thead = "<thead><tr><th scope=\"col\">Within</th>";
       occ.thresholds.forEach(function (t) {
         thead += '<th scope="col" style="text-align:right">M ' + t.toFixed(1) + "+</th>";
@@ -534,12 +535,22 @@
           })[0];
           if (!cell || cell.rate === null) {
             body += '<td style="text-align:right" class="thin">n/a</td>';
-          } else if (cell.positives < 25) {
-            body += '<td style="text-align:right" class="thin" title="'
-              + cell.positives + ' historical cases, too few to quantify">'
-              + cell.rate.toFixed(1) + "%*</td>";
           } else {
-            body += '<td style="text-align:right" class="v">' + cell.rate.toFixed(1) + "%</td>";
+            /* Quote the year-block interval where it exists. It drops the
+               independence assumption Wilson needs and is the wider, more
+               defensible of the two. */
+            var ci = cell.block_ci && cell.block_ci !== "—" ? cell.block_ci : cell.ci;
+            var moe = (cell.block_moe !== null && cell.block_moe !== undefined)
+              ? cell.block_moe : cell.moe;
+            var thin = cell.positives < 25;
+            body += '<td style="text-align:right" class="' + (thin ? "thin" : "v") + '"'
+              + ' title="' + cell.positives + " of " + cell.anchors + " occasions"
+              + (ci ? ", " + conf + "% CI " + ci + "%" : "") + '">'
+              + cell.rate.toFixed(1) + "%" + (thin ? "*" : "")
+              + (moe !== null && moe !== undefined
+                  ? '<span class="moe">&plusmn;' + moe.toFixed(1) + "</span>"
+                  : "")
+              + "</td>";
           }
         });
         body += "</tr>";
@@ -566,7 +577,12 @@
             ? " (M " + skilful[0].threshold.toFixed(1) + "+ within " + skilful[0].radius
               + " km, by " + skilful[0].bss.toFixed(1) + "% Brier skill)"
             : "")
-        + ", so the rate is reported instead. Starred values rest on fewer than 25 cases.";
+        + ", so the rate is reported instead. Each figure carries its margin of error in "
+        + "percentage points at " + conf + "% confidence, from a bootstrap that resamples "
+        + "whole years rather than individual anchors, because overlapping windows from one "
+        + "catalogue are not independent trials. Hover a cell for the interval. Starred "
+        + "values rest on fewer than 25 historical cases and should be read as an order of "
+        + "magnitude, not a number.";
       wrap.appendChild(note);
       return wrap;
     }

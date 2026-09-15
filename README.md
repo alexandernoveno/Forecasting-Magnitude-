@@ -136,6 +136,17 @@ same cell when a test block holds four to thirty positives. The site therefore
 publishes the observed conditional frequencies and states what the model
 achieved. Tables 33 and 34 carry the full grid.
 
+**Every probability carries a margin of error, and the wider one is quoted.**
+Rates are reported at 95% confidence with two intervals. Wilson is the standard
+interval for a proportion and is what a reader expects; Wald's is unusable at
+these rates, returning a negative lower bound at the M 7.0 frequency of 0.4%.
+But Wilson assumes independent trials, and these anchors are overlapping
+space-time windows from one catalogue where a single swarm supplies many of
+them. A bootstrap that resamples whole years drops that assumption and roughly
+triples the margin of error, from 2.1 to 5.6 percentage points on the headline
+figure. The site and Table 35 quote the block interval, because it is the
+defensible one.
+
 **The catalogue is complete only from M 4.0.** No event in the workbook carries
 a working magnitude below 4.0 — PHIVOLCS publishes its bulletin from that
 threshold. Magnitude classes therefore begin at the catalogue's own floor rather
