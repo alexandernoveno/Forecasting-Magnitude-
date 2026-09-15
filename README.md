@@ -118,6 +118,24 @@ cannot rerun a QGIS layer, so it takes the nearest of the 797 distinct source
 points the catalogue resolves to, which reproduces the mapped assignment for
 99.7% of events and is at most 0.24 km further out for the rest.
 
+**Occurrence probability is reported as a historical rate, not a model output.**
+Objective 2 asks for the magnitude and its probability. The magnitude model
+assumes an earthquake follows and estimates how large; it cannot say whether
+one follows, because every sequence in that data set ends in a mainshock and so
+every label is positive. A separate occurrence data set was therefore built:
+1,702 to 4,125 anchors, each a moment and place with recent activity, labelled
+by whether an independent earthquake of a given size followed within the next
+14 days at a given radius.
+
+Across nine combinations of magnitude and radius the calibrated model beat the
+historical base rate in exactly one, M 5.0 and above within 50 km, by 3.4%
+Brier skill with a fold-to-fold spread several times that. Scored on a single
+chronological split it looked far better, which is why it is scored across
+rolling-origin folds: one split returns an AUC anywhere from .13 to .80 on the
+same cell when a test block holds four to thirty positives. The site therefore
+publishes the observed conditional frequencies and states what the model
+achieved. Tables 33 and 34 carry the full grid.
+
 **The catalogue is complete only from M 4.0.** No event in the workbook carries
 a working magnitude below 4.0 — PHIVOLCS publishes its bulletin from that
 threshold. Magnitude classes therefore begin at the catalogue's own floor rather

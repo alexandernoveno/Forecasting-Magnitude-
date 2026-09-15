@@ -632,6 +632,26 @@ tbody tr.is-top td:first-child { color: var(--accent); font-weight: 600; }
   font-family: var(--f-mono); font-size: .7rem; letter-spacing: .05em; color: var(--mute);
 }
 
+/* --- Occurrence probability grid ------------------------------------------ */
+.prob { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.prob__h {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 4px;
+}
+.prob__h span:first-child {
+  font-family: var(--f-mono); font-size: .6rem; letter-spacing: .11em;
+  text-transform: uppercase; color: var(--mute);
+}
+.prob__h span:last-child { font-family: var(--f-mono); font-size: .62rem; color: var(--mute); }
+.prob table { min-width: 0; width: 100%; font-size: .82rem; margin-top: 10px; }
+.prob th, .prob td { padding: 8px 0; }
+.prob thead th { font-size: .58rem; border-bottom: 1px solid var(--line-2); }
+.prob tbody td { border-bottom: 1px solid var(--line); }
+.prob tbody tr:last-child td { border-bottom: 0; }
+.prob td.v { font-weight: 600; color: var(--ink); }
+.prob td.thin { color: var(--mute); font-style: italic; }
+.prob__note { font-size: .78rem; color: var(--mute); line-height: 1.5; margin-top: 12px; }
+
 /* --- Motion --------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
   .has-js .rv { opacity: 0; transform: translateY(20px); }
@@ -1010,6 +1030,8 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <p>An Extra Trees ensemble on 27 features cuts squared error by 23.6% against quoting the historical average magnitude. That is real skill. It is also small: the typical error is still about half a magnitude unit, the difference between a tremor and a damaging event.</p>
           <h3>Fault distance earns its place</h3>
           <p>Adding the distance from each foreshock to the nearest mapped fault lifted the best model from 21.4% to 23.6%. Three of the five fault features rank fifth, sixth and seventh of 27 by permutation importance. The other two measure nothing the model can use, and are reported as such.</p>
+          <h3>Whether, not just how large</h3>
+          <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. Across nine combinations of magnitude and radius it beat the historical rate in one, by 3.4% Brier skill with a fold-to-fold spread several times that. The panel therefore reports the historical rates and says what the model achieved, rather than presenting a coin flip as a forecast.</p>
           <h3>Depth beats recurrence</h3>
           <p>The recurrent networks land barely ahead of the baseline and every tree ensemble beats them. With 428 training sequences of ten timesteps, there is not enough data for a recurrent architecture to pay for its parameters.</p>
         </div>
@@ -1023,7 +1045,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
       <div class="sec__head rv">
         <p class="eyebrow">Try it</p>
         <h2>Run the model on a foreshock sequence.</h2>
-        <p class="lede">Four trained models from the paper, running in your browser on the events you give them, fault distances resolved automatically.</p>
+        <p class="lede">Four trained models from the paper, running in your browser on the events you give them. The panel returns how large a mainshock would be, and separately how often one has actually followed a sequence like this within two weeks.</p>
       </div>
 
       <div class="lab">
@@ -1166,6 +1188,11 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <span class="limit__t">Foreshocks are rare</span>
           <h3>Most large events arrive unannounced</h3>
           <p>Of 3,261 candidate mainshocks, only 535 had enough catalogued activity in the preceding fortnight to support a forecast at all. The method is silent for the great majority of damaging earthquakes.</p>
+        </div>
+        <div class="limit">
+          <span class="limit__t">Occurrence resists modelling</span>
+          <h3>How large is learnable, whether is not</h3>
+          <p>Conditional on a mainshock following, its magnitude is forecast with 23.6% skill. Whether one follows at all is another matter: across nine magnitude and radius combinations the probability model beat the historical rate once, marginally. The honest answer to "what is the chance" remains the observed frequency.</p>
         </div>
         <div class="limit">
           <span class="limit__t">Detection, not seismicity</span>

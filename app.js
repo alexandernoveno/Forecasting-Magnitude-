@@ -468,6 +468,16 @@
       });
       frag.appendChild(kv);
 
+      /* Occurrence probability. This answers a different question from the
+         magnitude above it: not how large, but whether anything happens at all
+         inside the horizon. The machine learning model was built and scored for
+         this and beat the historical rate in one cell of nine, so what is shown
+         is the rate itself, with the model's measured result stated rather than
+         implied. */
+      if (bundle.occurrence && bundle.occurrence.cells) {
+        frag.appendChild(buildProbability(bundle.occurrence));
+      }
+
       var caution = document.createElement("p");
       caution.className = "caution";
       caution.innerHTML = "<strong>This is a demonstrator, not a warning system.</strong> "
@@ -491,6 +501,69 @@
     document.addEventListener("change", function (e) {
       if (e.target && e.target.matches && e.target.matches('.seg input')) { syncSegments(); }
     });
+
+    function buildProbability(occ) {
+      var wrap = document.createElement("div");
+      wrap.className = "prob";
+
+      var head = document.createElement("div");
+      head.className = "prob__h";
+      head.innerHTML = "<span>Chance something follows, next "
+        + occ.horizon_days + " days</span><span>historical rate</span>";
+      wrap.appendChild(head);
+
+      var table = document.createElement("table");
+      var thead = "<thead><tr><th scope=\"col\">Within</th>";
+      occ.thresholds.forEach(function (t) {
+        thead += '<th scope="col" style="text-align:right">M ' + t.toFixed(1) + "+</th>";
+      });
+      thead += "</tr></thead>";
+
+      var body = "<tbody>";
+      occ.radii.forEach(function (r) {
+        body += "<tr><td>" + r + " km</td>";
+        occ.thresholds.forEach(function (t) {
+          var cell = occ.cells.filter(function (c) {
+            return c.radius === r && Math.abs(c.threshold - t) < 1e-9;
+          })[0];
+          if (!cell || cell.rate === null) {
+            body += '<td style="text-align:right" class="thin">n/a</td>';
+          } else if (cell.positives < 25) {
+            body += '<td style="text-align:right" class="thin" title="'
+              + cell.positives + ' historical cases, too few to quantify">'
+              + cell.rate.toFixed(1) + "%*</td>";
+          } else {
+            body += '<td style="text-align:right" class="v">' + cell.rate.toFixed(1) + "%</td>";
+          }
+        });
+        body += "</tr>";
+      });
+      body += "</tbody>";
+      table.innerHTML = thead + body;
+      wrap.appendChild(table);
+
+      var skilful = occ.cells.filter(function (c) {
+        return c.verdict && c.verdict.indexOf("beats") !== -1;
+      });
+      var note = document.createElement("p");
+      note.className = "prob__note";
+      /* Anchor counts differ per radius, so quote the range rather than one row. */
+      var counts = occ.cells.map(function (c) { return c.anchors; });
+      var lo = Math.min.apply(null, counts), hi = Math.max.apply(null, counts);
+      note.innerHTML = "How often an earthquake of that size actually followed, across "
+        + lo.toLocaleString() + " to " + hi.toLocaleString() + " historical occasions "
+        + "(depending on radius) when a sequence like this was already under way. "
+        + "Not conditioned on your events. A machine learning "
+        + "model was trained for this and beat the historical rate in "
+        + skilful.length + " of " + occ.cells.length + " cells"
+        + (skilful.length
+            ? " (M " + skilful[0].threshold.toFixed(1) + "+ within " + skilful[0].radius
+              + " km, by " + skilful[0].bss.toFixed(1) + "% Brier skill)"
+            : "")
+        + ", so the rate is reported instead. Starred values rest on fewer than 25 cases.";
+      wrap.appendChild(note);
+      return wrap;
+    }
 
     /* ---- wiring ---------------------------------------------------------- */
     Array.prototype.forEach.call(document.querySelectorAll('input[name="source"]'), function (input) {

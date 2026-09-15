@@ -245,6 +245,7 @@ def main() -> None:
         "core_features": list(ea.CORE_FEATURE_NAMES),
         "fault_features": list(ea.FAULT_FEATURE_NAMES),
         "sources": source_points(catalogue),
+        "occurrence": occurrence_block(ea),
         "climatology": round(clim, 4),
         "climatology_rmse": round(float(np.sqrt(clim_mse)), 4),
         "n_train": int(len(idx_trval)),
@@ -291,6 +292,46 @@ def export_catalogue(cat_sorted) -> None:
     CATALOGUE_OUT.write_text(json.dumps(payload, separators=(",", ":")))
     print(f"Wrote {CATALOGUE_OUT}  ({CATALOGUE_OUT.stat().st_size / 1024:,.0f} KB), "
           f"{payload['n']:,} events")
+
+
+def occurrence_block(ea) -> dict:
+    """Occurrence rates and measured skill, read back from the analysis output.
+
+    Only the historical conditional rates are shipped. The machine learning
+    probability was built and scored and beat the base rate in one cell of nine,
+    by 3.4% Brier skill with a fold-to-fold spread several times that, so the
+    page reports the rates and states what the model achieved rather than
+    dressing a coin flip up as a forecast.
+    """
+    import csv
+    path = ea.CFG.TABLE_DIR / "t34_occurrence_skill.csv"
+    if not path.exists():
+        return {}
+    cells = []
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            def num(key):
+                try:
+                    return round(float(row[key]), 3)
+                except (TypeError, ValueError):
+                    return None
+            cells.append({
+                "radius": int(float(row["Radius (km)"])),
+                "threshold": float(row["Threshold"].split("≥")[-1]),
+                "anchors": int(float(row["Anchors"])),
+                "positives": int(float(row["Positives"])),
+                "rate": num("Historical rate (%)"),
+                "auc": num("M ROC AUC"),
+                "bss": num("M Brier skill (%)"),
+                "verdict": row["Verdict"],
+            })
+    return {
+        "horizon_days": ea.CFG.HORIZON_DAYS,
+        "lookback_days": ea.CFG.T_OBS_DAYS,
+        "thresholds": list(ea.CFG.OCC_THRESHOLDS),
+        "radii": [int(r) for r in ea.CFG.OCC_RADII],
+        "cells": cells,
+    }
 
 
 def source_points(catalogue) -> dict:

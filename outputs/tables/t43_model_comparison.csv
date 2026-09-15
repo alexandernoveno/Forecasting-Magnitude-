@@ -1,6 +1,6 @@
 Comparison,Statistic,Value,p,Interpretation
-Random Forest vs. LSTM,Mean |error| difference,-0.013251649244962013,,positive favours LSTM
-,Paired t,-0.46053603227077305,0.6460749249334361,Not significant
+Random Forest vs. LSTM,Mean |error| difference,-0.01325164924496198,,positive favours LSTM
+,Paired t,-0.46053603227077194,0.646074924933437,Not significant
 ,Wilcoxon signed-rank W,2773.0,0.718451319609609,Not significant
-,Diebold–Mariano DM,-0.4605360322707731,0.6451315143951704,Not significant
-,Cohen's d (paired errors),-0.03702559367354923,,No significant difference
+,Diebold–Mariano DM,-0.460536032270772,0.6451315143951712,Not significant
+,Cohen's d (paired errors),-0.037025593673549136,,No significant difference

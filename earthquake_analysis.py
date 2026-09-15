@@ -158,6 +158,16 @@ class CFG:
     MIN_FORESHOCKS = 3                # sparser windows cannot support a b-value
     BACKGROUND_DAYS = 365.0           # reference interval for the beta statistic
 
+    # --- Occurrence forecasting ------------------------------------------- #
+    # The magnitude model answers "how large, given that one follows". This
+    # answers the other half of Objective 2: whether one follows at all, inside
+    # the two-week window the Scope section commits to.
+    HORIZON_DAYS = 14.0               # the forecast horizon, looking forward
+    OCC_THRESHOLDS = (5.0, 6.0, 7.0)  # "an earthquake of at least this size"
+    OCC_RADII = (50.0, 100.0, 200.0)  # ... within this distance of the anchor
+    OCC_THIN_DAYS = 1.0               # anchors closer than this are one anchor
+    OCC_MIN_POSITIVES = 25            # below this a rate is reported, not modelled
+
     MAG_CLASS_EDGES = (5.0, 6.0, 7.0, 10.0)
     MAG_CLASS_LABELS = ("Moderate (5.0-5.9)", "Strong (6.0-6.9)", "Major (>=7.0)")
     DEPTH_CLASS_EDGES = (0.0, 70.0, 300.0, 750.0)
@@ -1521,6 +1531,249 @@ def build_sequences(declustered, full=None) -> pd.DataFrame:
     out.attrs["n_mainshocks"] = len(mains)
     return out
 
+
+
+# =============================================================================
+# PART 8b.  OCCURRENCE FORECASTING
+# -----------------------------------------------------------------------------
+# The magnitude model answers "how large, if one follows". It assumes an
+# earthquake happens. The Scope section commits to something else as well: the
+# probability that one occurs at all inside a two-week window. That cannot be
+# learned from the sequence data set, because every sequence there ends in a
+# mainshock and so every label is positive. It needs anchors where nothing
+# followed, which is what this part builds.
+#
+# An anchor is a moment and a place with enough recent activity to compute the
+# features: the operational question is not "will an earthquake strike a random
+# point" but "we are seeing tremors here, what now". The label looks FORWARD
+# from the anchor over HORIZON_DAYS, which is the reverse of the magnitude
+# model's backward-looking observation window.
+# =============================================================================
+def build_occurrence_dataset(full, independent, radius, horizon=None, thin_days=None):
+    """Anchors with look-back features and forward-looking occurrence labels.
+
+    `full` supplies the activity the features are computed from; `independent`
+    supplies the labels, so an aftershock of an event that already happened does
+    not count as a fresh occurrence. Anchors within `thin_days` and half a
+    radius of one already kept are dropped: a single swarm would otherwise
+    contribute fifty near-identical rows and dominate both training and score.
+    """
+    horizon = CFG.HORIZON_DAYS if horizon is None else horizon
+    thin_days = CFG.OCC_THIN_DAYS if thin_days is None else thin_days
+
+    src = full.sort_values("datetime", kind="mergesort").reset_index(drop=True)
+    ind = independent.sort_values("datetime", kind="mergesort").reset_index(drop=True)
+    origin = src["datetime"].iloc[0]
+    to_days = lambda s: (s - origin).dt.total_seconds().to_numpy() / 86400.0
+
+    t = to_days(src["datetime"])
+    lat, lon = src["Latitude"].to_numpy(), src["Longitude"].to_numpy()
+    mag = src["Magnitude"].to_numpy()
+    dist = src["SrcDistKm"].to_numpy() if "SrcDistKm" in src.columns else None
+    span = t[-1] - t[0]
+
+    it = to_days(ind["datetime"])
+    ilat, ilon = ind["Latitude"].to_numpy(), ind["Longitude"].to_numpy()
+    imag = ind["Magnitude"].to_numpy()
+
+    kept_t, kept_lat, kept_lon = [], [], []
+    rows, skipped = [], 0
+
+    for i in range(len(src)):
+        t_end = t[i]
+        t_start = t_end - CFG.T_OBS_DAYS
+        if t_start < t[0] or t_end + horizon > t[-1]:
+            continue
+
+        lo = np.searchsorted(t, t_start, "left")
+        idx = np.arange(lo, i)
+        if idx.size:
+            idx = idx[haversine_km(lat[i], lon[i], lat[idx], lon[idx]) <= radius]
+        if idx.size < CFG.MIN_FORESHOCKS:
+            continue
+
+        # Thinning. Walk back only as far as the separation allows.
+        crowded = False
+        for j in range(len(kept_t) - 1, -1, -1):
+            if t_end - kept_t[j] > thin_days:
+                break
+            if haversine_km(lat[i], lon[i], kept_lat[j], kept_lon[j]) <= radius / 2:
+                crowded = True
+                break
+        if crowded:
+            skipped += 1
+            continue
+        kept_t.append(t_end); kept_lat.append(lat[i]); kept_lon.append(lon[i])
+
+        blo = np.searchsorted(t, t_end - CFG.BACKGROUND_DAYS, "left")
+        bidx = np.arange(blo, i)
+        if bidx.size:
+            bidx = bidx[haversine_km(lat[i], lon[i], lat[bidx], lon[bidx]) <= radius]
+
+        prior = np.arange(0, i)
+        prior = prior[haversine_km(lat[i], lon[i], lat[prior], lon[prior]) <= radius]
+
+        feats = _window_features(mag[idx], t[idx], t_start, t_end, max(bidx.size, 1))
+        if dist is not None:
+            feats.update(_fault_features(dist[idx], mag[idx], t[idx]))
+        else:
+            feats.update({n: np.nan for n in FAULT_FEATURE_NAMES})
+        for name, threshold in (("T_elaps6", 6.0), ("T_elaps65", 6.5),
+                                ("T_elaps7", 7.0), ("T_elaps75", 7.5)):
+            feats[name] = _days_since(t[prior], mag[prior], t_end, threshold, span)
+
+        # Forward window, from the independent catalogue.
+        flo = np.searchsorted(it, t_end, "right")
+        fhi = np.searchsorted(it, t_end + horizon, "right")
+        fwd = np.arange(flo, fhi)
+        if fwd.size:
+            fwd = fwd[haversine_km(lat[i], lon[i], ilat[fwd], ilon[fwd]) <= radius]
+        largest = float(imag[fwd].max()) if fwd.size else 0.0
+
+        record = {"AnchorTime": src["datetime"].iloc[i], "AnchorLat": lat[i],
+                  "AnchorLon": lon[i], "t_end": t_end,
+                  "LargestAhead": largest, **feats}
+        for threshold in CFG.OCC_THRESHOLDS:
+            record[f"y{threshold:g}"] = int(largest >= threshold)
+        rows.append(record)
+
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out = out.sort_values("AnchorTime").reset_index(drop=True)
+        out.attrs["thinned"] = skipped
+        out.attrs["radius"] = radius
+        out.attrs["horizon"] = horizon
+    return out
+
+
+def occurrence_profile(datasets) -> pd.DataFrame:
+    """Anchor counts and observed base rates for every radius and threshold."""
+    rows = []
+    for radius, data in datasets.items():
+        row = {"Radius (km)": radius, "Anchors": len(data),
+               "Thinned out": data.attrs.get("thinned", 0),
+               "Period": f"{data['AnchorTime'].min():%b %Y} to {data['AnchorTime'].max():%b %Y}"}
+        for threshold in CFG.OCC_THRESHOLDS:
+            y = data[f"y{threshold:g}"]
+            row[f"P(M ≥ {threshold:g}) observed"] = 100 * y.mean()
+            row[f"n positive (M ≥ {threshold:g})"] = int(y.sum())
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def fit_occurrence_models(datasets, seed=CFG.SEED, folds=CFG.CV_FOLDS, verbose=True):
+    """Train, calibrate and honestly score one probability model per cell.
+
+    Evaluation is rolling-origin rather than a single chronological split. With
+    four to thirty positives in a test block, one split produces an AUC that
+    swings from .13 to .80 on the same cell, and reporting whichever one came up
+    would be reporting noise. Every cell is scored across folds and judged on
+    the mean.
+
+    A cell is only called modelled when the calibrated probability actually
+    beats quoting the historical base rate: a positive mean Brier skill score
+    and a mean ROC AUC above .55. Anything else falls back to the base rate,
+    which is a real conditional frequency and an honest answer, rather than
+    dressing a coin flip up as a forecast.
+    """
+    from sklearn.calibration import CalibratedClassifierCV
+
+    results, fitted = [], {}
+    for radius, data in datasets.items():
+        logged = DataBundle._log_transform(
+            data[FEATURE_NAMES].replace([np.inf, -np.inf], np.nan))
+        n = len(data)
+        block = n // (folds + 1)
+
+        for threshold in CFG.OCC_THRESHOLDS:
+            y = data[f"y{threshold:g}"].to_numpy(int)
+            overall_rate = float(y.mean())
+            aucs, bsss, tested = [], [], 0
+
+            for f in range(folds):
+                tr = np.arange(0, block * (f + 1))
+                te = np.arange(block * (f + 1), min(block * (f + 2), n))
+                if te.size < 20 or y[tr].sum() < CFG.OCC_MIN_POSITIVES:
+                    continue
+                if len(np.unique(y[te])) < 2:
+                    continue
+
+                fill = logged.iloc[tr].median(numeric_only=True).fillna(0.0)
+                lo = logged.iloc[tr].quantile(WINSOR_QUANTILES[0])
+                hi = logged.iloc[tr].quantile(WINSOR_QUANTILES[1])
+                M = logged.fillna(fill).clip(lower=lo, upper=hi, axis=1).to_numpy(float)
+
+                cut = int(0.8 * len(tr))
+                forest = RandomForestClassifier(
+                    n_estimators=300, max_depth=8, min_samples_leaf=4,
+                    class_weight="balanced_subsample", random_state=seed, n_jobs=-1)
+                forest.fit(M[tr[:cut]], y[tr[:cut]])
+                calibrated = CalibratedClassifierCV(forest, method="sigmoid", cv="prefit")
+                calibrated.fit(M[tr[cut:]], y[tr[cut:]])
+                prob = calibrated.predict_proba(M[te])[:, 1]
+
+                brier = float(np.mean((prob - y[te]) ** 2))
+                ref = float(np.mean((y[tr].mean() - y[te]) ** 2))
+                aucs.append(float(roc_auc_score(y[te], prob)))
+                bsss.append(100 * (1 - brier / ref) if ref > 0 else np.nan)
+                tested += te.size
+                fitted[(radius, threshold)] = {
+                    "model": calibrated, "fill": fill, "lo": lo, "hi": hi,
+                    "prob": prob, "y": y[te]}
+
+            if not aucs:
+                results.append({
+                    "Radius (km)": radius, "Threshold": f"M ≥ {threshold:g}",
+                    "Anchors": n, "Positives": int(y.sum()),
+                    "Historical rate (%)": 100 * overall_rate, "Folds scored": 0,
+                    "M ROC AUC": np.nan, "SD AUC": np.nan,
+                    "M Brier skill (%)": np.nan, "SD Brier skill": np.nan,
+                    "Verdict": "Too few events to model"})
+                fitted.pop((radius, threshold), None)
+                continue
+
+            mean_auc = float(np.mean(aucs))
+            mean_bss = float(np.nanmean(bsss))
+            skilful = mean_bss > 0 and mean_auc > 0.55
+            results.append({
+                "Radius (km)": radius, "Threshold": f"M ≥ {threshold:g}",
+                "Anchors": n, "Positives": int(y.sum()),
+                "Historical rate (%)": 100 * overall_rate, "Folds scored": len(aucs),
+                "M ROC AUC": mean_auc, "SD AUC": float(np.std(aucs, ddof=1)) if len(aucs) > 1 else np.nan,
+                "M Brier skill (%)": mean_bss,
+                "SD Brier skill": float(np.nanstd(bsss, ddof=1)) if len(bsss) > 1 else np.nan,
+                "Verdict": "Model beats the base rate" if skilful else "No skill beyond the base rate"})
+            if not skilful:
+                fitted.pop((radius, threshold), None)
+            if verbose:
+                print(f"      R={radius:3.0f} km  M>={threshold:g}  rate {100*overall_rate:5.1f}%  "
+                      f"AUC {mean_auc:.3f}  BSS {mean_bss:+6.1f}%  "
+                      f"{'skilful' if skilful else 'no skill'}")
+    return pd.DataFrame(results), fitted
+
+
+def reliability_table(prob, y, bins=5) -> pd.DataFrame:
+    """Observed frequency against forecast probability, the calibration check.
+
+    A probability is only meaningful if, across the occasions it says 20%, the
+    thing happens about a fifth of the time. Discrimination scores cannot tell
+    you that; this can.
+    """
+    prob = np.asarray(prob, float)
+    y = np.asarray(y, int)
+    edges = np.linspace(0, max(prob.max(), 1e-9), bins + 1)
+    rows = []
+    for k in range(bins):
+        lo, hi = edges[k], edges[k + 1]
+        sel = (prob >= lo) & (prob < hi if k < bins - 1 else prob <= hi)
+        if sel.sum() == 0:
+            continue
+        rows.append({"Forecast band": f"{100*lo:.0f} to {100*hi:.0f}%",
+                     "n": int(sel.sum()),
+                     "Mean forecast (%)": 100 * float(prob[sel].mean()),
+                     "Observed rate (%)": 100 * float(y[sel].mean()),
+                     "Difference (pp)": 100 * float(y[sel].mean() - prob[sel].mean())})
+    return pd.DataFrame(rows)
 
 def feature_dictionary() -> pd.DataFrame:
     """The 22 features with their category and description, for the paper."""
@@ -3528,6 +3781,12 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  slug="t30_feature_descriptives", decimals=3,
                  int_columns=("n valid", "n missing"), align={"Feature": LEFT},
                  landscape=True, font_size=Pt(8.5))
+    occ_datasets = {r: build_occurrence_dataset(catalogue, independent, r)
+                    for r in CFG.OCC_RADII}
+    occ_results, occ_fitted = fit_occurrence_models(occ_datasets)
+    for r, d in occ_datasets.items():
+        d.to_csv(CFG.TABLE_DIR / f"occurrence_anchors_{int(r)}km.csv", index=False)
+
     report.table(target_feature_correlations(sequences),
                  "Correlations Between Each Engineered Feature and the Mainshock "
                  "Magnitude",
@@ -3538,6 +3797,36 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  p_columns=("p (r)", "p (ρ)"),
                  strip_zero_columns=("Pearson r", "Spearman ρ"), int_columns=("n",),
                  align={"Feature": LEFT, "Strength": LEFT})
+
+    # ---- Occurrence forecasting ---------------------------------------- #
+    print("\n      occurrence dataset and probability models ...")
+    add_heading(doc, "Section F. Probability of Occurrence", 1)
+    report.table(occurrence_profile(occ_datasets),
+                 "Construction of the Occurrence Data Set",
+                 f"Each anchor is a moment and a place with at least {CFG.MIN_FORESHOCKS} "
+                 f"catalogued events in the preceding {CFG.T_OBS_DAYS:.0f} days, labelled by "
+                 f"whether an independent earthquake of the stated size followed within the "
+                 f"next {CFG.HORIZON_DAYS:.0f} days. This is the reverse of the magnitude "
+                 "model's window, which looks backward. Anchors within a day and half a radius "
+                 "of one already kept are dropped, because a single swarm would otherwise "
+                 "contribute dozens of near-identical rows.",
+                 slug="t33_occurrence_profile", decimals=1,
+                 int_columns=("Anchors", "Thinned out") + tuple(
+                     f"n positive (M ≥ {t:g})" for t in CFG.OCC_THRESHOLDS),
+                 align={"Period": LEFT}, landscape=True, font_size=Pt(8.5))
+
+    report.table(occ_results,
+                 "Does the Model Beat the Historical Rate? Rolling-Origin Scores",
+                 "Scored across expanding-window folds rather than one split: with four to "
+                 "thirty positives in a test block, a single split returns an AUC anywhere "
+                 "between .13 and .80 for the same cell. A cell counts as modelled only if the "
+                 "calibrated probability beats quoting the base rate, meaning a positive mean "
+                 "Brier skill score and a mean AUC above .55. The historical rate column is a "
+                 "real conditional frequency and remains a defensible answer wherever the model "
+                 "does not clear that bar.",
+                 slug="t34_occurrence_skill", decimals=3,
+                 int_columns=("Anchors", "Positives", "Folds scored"),
+                 align={"Threshold": LEFT, "Verdict": LEFT}, landscape=True, font_size=Pt(8.5))
 
     if not run_models:
         _finish(doc, report, started)
