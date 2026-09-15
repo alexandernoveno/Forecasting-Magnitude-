@@ -632,6 +632,26 @@ tbody tr.is-top td:first-child { color: var(--accent); font-weight: 600; }
   font-family: var(--f-mono); font-size: .7rem; letter-spacing: .05em; color: var(--mute);
 }
 
+/* --- How to use the forecaster -------------------------------------------- */
+.howto {
+  display: grid; grid-template-columns: 1fr; gap: 1px;
+  margin-top: 36px; background: var(--line);
+  border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden;
+}
+@media (min-width: 760px) { .howto { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.howto__step { background: var(--surface); padding: 26px 24px; display: flex; flex-direction: column; gap: 9px; }
+.howto__n {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+  font-family: var(--f-mono); font-size: .68rem; font-weight: 600; margin-bottom: 3px;
+}
+.howto__step h3 { font-size: 1.02rem; }
+.howto__step p { font-size: .91rem; color: var(--mute); max-width: none; }
+.howto__step code {
+  font-family: var(--f-mono); font-size: .86em; color: var(--ink-2);
+  background: var(--surface-2); padding: 1px 5px; border-radius: 5px;
+}
+
 /* --- Occurrence probability grid ------------------------------------------ */
 .prob { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
 .prob__h {
@@ -1051,6 +1071,25 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <p class="eyebrow">Try it</p>
         <h2>Run the model on a foreshock sequence.</h2>
         <p class="lede">Four trained models from the paper, running in your browser on the events you give them. The panel returns how large a mainshock would be, and separately how often one has actually followed a sequence like this within two weeks.</p>
+      </div>
+
+
+      <div class="howto rv-s">
+        <div class="howto__step">
+          <span class="howto__n" aria-hidden="true">1</span>
+          <h3>Choose a sequence</h3>
+          <p><strong>A recorded sequence</strong> loads a real case from the held-out test partition, so you can compare the forecast against what actually happened. <strong>Your own</strong> lets you type an epicentre, a date and your own list of tremors.</p>
+        </div>
+        <div class="howto__step">
+          <span class="howto__n" aria-hidden="true">2</span>
+          <h3>Check the foreshocks</h3>
+          <p>One row per tremor in the 14 days before. <code>Days before</code> counts backward from the forecast moment, so <code>0.44</code> means about eleven hours earlier. At least three complete rows are needed before the model can be computed.</p>
+        </div>
+        <div class="howto__step">
+          <span class="howto__n" aria-hidden="true">3</span>
+          <h3>Pick a model and forecast</h3>
+          <p>The number beside each model is its test error in magnitude units, so lower is better. Press <strong>Forecast</strong> and the panel returns the expected magnitude, its uncertainty, and the historical chance that anything follows.</p>
+        </div>
       </div>
 
       <div class="lab">
