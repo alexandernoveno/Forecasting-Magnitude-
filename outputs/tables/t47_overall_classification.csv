@@ -1,0 +1,7 @@
+Metric,Estimate,95% CI,Interpretation
+Accuracy,0.822429906542056,"[0.748, 0.897]",—
+Macro F1,0.5299823633156966,"[0.301, 0.729]",—
+Cohen's κ,0.18809904153354629,"[-0.033, 0.398]",Slight
+Weighted κ (quadratic),0.2736899266901982,"[-0.030, 0.562]",Fair
+Test sequences (N),107,—,—
+Majority-class rate (no-skill accuracy),0.8130841121495327,—,Reference for the accuracy above

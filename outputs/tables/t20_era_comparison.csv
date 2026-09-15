@@ -1,0 +1,11 @@
+Statistic,Value
+n (pre-1980),"3,273"
+M (pre-1980),4.957 (SD = 0.648)
+n (1980–present),"14,394"
+M (1980–present),4.481 (SD = 0.481)
+Welch's t,39.571
+p (Welch's t),< .001
+Cohen's d,0.922
+Mann–Whitney U,"35,058,464"
+p (Mann–Whitney),< .001
+Rank-biserial correlation,-0.488

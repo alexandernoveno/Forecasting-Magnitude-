@@ -1,0 +1,7 @@
+Declustering stage,n,% of input
+Events entering Maeda's method,17667,100.0
+Dependent events removed (Eq. 1–3),2207,12.492217127978718
+Independent events retained,15460,87.50778287202128
+Retained events M ≥ 5.0,3261,18.458142299201903
+Retained events M ≥ 6.0,431,2.439576611762042
+Retained events M ≥ 7.0,86,0.4867832682402219

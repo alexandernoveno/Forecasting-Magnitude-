@@ -1,0 +1,8 @@
+Quantity,Value
+Friedman χ²,47.418
+df,15
+p,< .001
+Models compared (k),16
+Validation folds (N),5
+Nemenyi critical difference (α = .05),15.029
+Decision,At least one model differs

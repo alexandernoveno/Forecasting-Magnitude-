@@ -1,0 +1,24 @@
+# The thesis manuscript is deliberately not published here. Posting an
+# unsubmitted thesis to a public repository risks it being indexed and later
+# flagged against the author's own submitted copy by similarity checkers.
+Earthquake Forecasting Machine Learning.pdf
+
+# The earlier multi-file version of the same pipeline. earthquake_analysis.py
+# supersedes it; keeping both in the repository would ship two implementations
+# of the same analysis.
+analysis/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.Python
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp

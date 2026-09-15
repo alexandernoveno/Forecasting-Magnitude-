@@ -1,0 +1,23 @@
+#,Feature,Category,Description
+1,NO,Basic statistics,Number of earthquakes in the observation window
+2,Mag_max,Basic statistics,Maximum magnitude in the observation window
+3,Mag_mean,Basic statistics,Mean magnitude in the observation window
+4,b_lsq,Gutenberg–Richter law,b-value by least-squares regression
+5,a_lsq,Gutenberg–Richter law,a-value by least-squares regression
+6,b_std_lsq,Gutenberg–Richter law,Standard deviation of b_lsq
+7,std_gr_lsq,Gutenberg–Richter law,Deviation from the Gutenberg–Richter law (LSQ)
+8,b_mlk,Gutenberg–Richter law,b-value by maximum likelihood (Aki–Utsu)
+9,a_mlk,Gutenberg–Richter law,a-value by maximum likelihood
+10,b_std_mlk,Gutenberg–Richter law,Standard deviation of b_mlk
+11,std_gr_mlk,Gutenberg–Richter law,Deviation from the Gutenberg–Richter law (MLE)
+12,dM_lsq,Energy and magnitude deficit,Magnitude deficit from a_lsq and b_lsq
+13,dM_mlk,Energy and magnitude deficit,Magnitude deficit from a_mlk and b_mlk
+14,Energy,Energy and magnitude deficit,Square root of the summed seismic energy release
+15,x7_lsq,Activity-rate change and probability,Probability of occurrence derived from b_lsq
+16,x7_mlk,Activity-rate change and probability,Probability of occurrence derived from b_mlk
+17,zvalue,Activity-rate change and probability,Seismic rate change (z statistic)
+18,beta,Activity-rate change and probability,Seismic rate change (β statistic)
+19,T_elaps6,Time elapsed,Days since the last M 6.0 earthquake
+20,T_elaps65,Time elapsed,Days since the last M 6.5 earthquake
+21,T_elaps7,Time elapsed,Days since the last M 7.0 earthquake
+22,T_elaps75,Time elapsed,Days since the last M 7.5 earthquake

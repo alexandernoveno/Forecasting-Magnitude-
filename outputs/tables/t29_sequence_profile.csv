@@ -1,0 +1,12 @@
+Quantity,Value
+"Candidate mainshocks (independent, M ≥ 5.0)","3,261"
+Rejected: window opens before the catalogue starts,1
+Rejected: fewer than 3 events in the observation window,"2,725"
+Forecast sequences retained,535
+Observation window,"14 days, 100 km radius"
+Period covered,Feb 1957 – Feb 2026
+"Target magnitude, M (SD)",5.378 (0.447)
+Target magnitude range,5.0 – 7.3
+Median foreshocks per window,6
+Sequences with an M ≥ 6.0 target,58
+Sequences with an M ≥ 7.0 target,8

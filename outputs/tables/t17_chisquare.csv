@@ -1,0 +1,2 @@
+Test,χ²,df,N,p,Cramér's V,Effect size,Decision at α = .05
+Pearson χ² test of independence,255.02420370488701,10,17667,4.763454869774866e-49,0.08495604724079694,Medium,Reject independence

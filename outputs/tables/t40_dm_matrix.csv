@@ -1,0 +1,6 @@
+Model,Random Forest,Extra Trees,Gradient Boosting,ARIMAX,Histogram GB
+Random Forest,—,.685,.436,.885,.462
+Extra Trees,.685,—,.592,.768,.629
+Gradient Boosting,.436,.592,—,.567,.914
+ARIMAX,.885,.768,.567,—,.604
+Histogram GB,.462,.629,.914,.604,—

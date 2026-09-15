@@ -1,0 +1,17 @@
+Model,Family,Input representation,Key settings
+Climatology (training mean),Baseline,None (constant),Predicts the training-set mean for every sequence
+Persistence (previous mainshock),Baseline,Previous target,Reuses the magnitude of the preceding mainshock
+Random Forest,Tree ensemble (bagging),22 engineered features,"n_estimators=300, max_depth=8, min_samples_leaf=1, max_features=0.5"
+Extra Trees,Tree ensemble (bagging),22 engineered features,"n_estimators=600, fully randomised splits"
+Gradient Boosting,Tree ensemble (boosting),22 engineered features,"n_estimators=400, lr=0.05, max_depth=3, subsample=0.8"
+Histogram GB,Tree ensemble (boosting),22 engineered features,"max_iter=400, lr=0.05, max_depth=6"
+Support Vector Regression,Kernel method,22 engineered features,"RBF kernel, C=10, ε=0.05, standardised inputs"
+k-Nearest Neighbours,Instance based,22 engineered features,"k=10, distance weighting, standardised inputs"
+Elastic Net,Regularised linear,22 engineered features,"α=0.05, L1 ratio=0.5"
+Ridge Regression,Regularised linear,22 engineered features,α=5.0
+Multilayer Perceptron,Feed-forward network,22 engineered features,"hidden=(64, 32), α=1.0, early stopping on a 20% inner split"
+LSTM,Recurrent network,10 × 5 event stream,"32 units, Adam (lr=0.01), early stopping (patience 40)"
+GRU,Recurrent network,10 × 5 event stream,"32 units, two gates, same optimiser as the LSTM"
+1D-CNN,Convolutional network,10 × 5 event stream,"24 filters, kernel 3, ReLU, global max pooling"
+ARIMA,Classical time series,Order-indexed target series,"(p, d, q) up to (2, 1, 2), selected by AIC"
+ARIMAX,Classical time series,Target series + 5 exogenous features,"As ARIMA, with the 5 features most correlated with the target in the training rows"
