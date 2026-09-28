@@ -450,6 +450,82 @@
       render(result, sorted, context, occFeatures, lat, lon);
     }
 
+    /* A magnitude ruler for the readout. The forecast, its error band, the
+       largest event that was typed in and, where it is known, what actually
+       happened, all on one scale. The question this answers is the one the
+       number alone kept provoking: how does the forecast sit against the
+       foreshocks it came from. */
+    var GAUGE_LO = 4.5, GAUGE_HI = 7.5;
+
+    function gaugePos(v) {
+      var c = Math.min(GAUGE_HI, Math.max(GAUGE_LO, v));
+      return ((c - GAUGE_LO) / (GAUGE_HI - GAUGE_LO)) * 100;
+    }
+
+    function gaugeTick(cls, value) {
+      var el = document.createElement("span");
+      el.className = "gauge__tick " + cls;
+      el.style.left = gaugePos(value).toFixed(2) + "%";
+      return el;
+    }
+
+    function gaugeKey(cls, label, value) {
+      var li = document.createElement("li");
+      li.className = cls;
+      li.innerHTML = '<span class="gauge__swatch"></span><span class="gauge__label">'
+        + label + '</span><span class="gauge__value">' + value + "</span>";
+      return li;
+    }
+
+    function buildGauge(m, rmse, largest, actual) {
+      var wrap = document.createElement("div");
+      wrap.className = "gauge";
+
+      var track = document.createElement("div");
+      track.className = "gauge__track";
+
+      var band = document.createElement("span");
+      band.className = "gauge__band";
+      band.style.left = gaugePos(m - rmse).toFixed(2) + "%";
+      band.style.width = (gaugePos(m + rmse) - gaugePos(m - rmse)).toFixed(2) + "%";
+      track.appendChild(band);
+
+      [5, 6, 7].forEach(function (g) {
+        var line = document.createElement("span");
+        line.className = "gauge__grid";
+        line.style.left = gaugePos(g).toFixed(2) + "%";
+        track.appendChild(line);
+      });
+
+      track.appendChild(gaugeTick("is-fore", largest));
+      if (isFinite(actual)) { track.appendChild(gaugeTick("is-obs", actual)); }
+      track.appendChild(gaugeTick("is-now", m));
+      wrap.appendChild(track);
+
+      var axis = document.createElement("div");
+      axis.className = "gauge__axis";
+      [[4.5, "4.5"], [5, "5.0"], [5.5, "5.5"], [6, "6.0"], [6.5, "6.5"], [7, "7.0"], [7.5, "7.5"]].forEach(function (t) {
+        var lab = document.createElement("span");
+        lab.style.left = gaugePos(t[0]).toFixed(2) + "%";
+        lab.textContent = t[1];
+        axis.appendChild(lab);
+      });
+      wrap.appendChild(axis);
+
+      var key = document.createElement("ul");
+      key.className = "gauge__key";
+      key.appendChild(gaugeKey("is-now", "Forecast, plus or minus "
+        + rmse.toFixed(2), m.toFixed(2)));
+      key.appendChild(gaugeKey("is-fore", "Largest foreshock entered",
+        "M " + largest.toFixed(1)));
+      if (isFinite(actual)) {
+        key.appendChild(gaugeKey("is-obs", "What actually happened",
+          "M " + actual.toFixed(1)));
+      }
+      wrap.appendChild(key);
+      return wrap;
+    }
+
     function render(result, events, context, occFeatures, lat, lon) {
       var model = bundle.models[chosen];
       var m = result.magnitude;
@@ -470,13 +546,15 @@
       head.appendChild(chip);
       frag.appendChild(head);
 
+      var largest = Math.max.apply(null, events.map(function (e) { return e.mag; }));
+
       var kv = document.createElement("div");
       kv.className = "kv";
       var items = [
         ["Model", model.label],
         ["Skill vs. average", (model.skill > 0 ? "+" : "") + model.skill.toFixed(1) + "%"],
         ["Events in window", String(events.length)],
-        ["Largest foreshock", "M " + Math.max.apply(null, events.map(function (e) { return e.mag; })).toFixed(1)],
+        ["Largest foreshock", "M " + largest.toFixed(1)],
       ];
       if (result.raw) {
         var bIdx = bundle.features.indexOf("b_mlk");
@@ -501,7 +579,27 @@
         cell.appendChild(v);
         kv.appendChild(cell);
       });
+      frag.appendChild(buildGauge(m, model.rmse, largest, actual));
       frag.appendChild(kv);
+
+      /* The forecast is free to land below the largest event on screen, and a
+         reader who has not seen the record will read that as a fault. It is not:
+         the window holds every catalogued tremor inside the radius, aftershocks
+         of an earlier larger earthquake included, and in 63 per cent of the 535
+         recorded sequences the mainshock never reached the largest event that
+         preceded it. Forcing the forecast upward costs 0.34 magnitude units of
+         accuracy, so the note explains rather than the model complies. */
+      if (m < largest - 0.005) {
+        var gap = document.createElement("p");
+        gap.className = "caution";
+        gap.innerHTML = "<strong>Lower than the largest foreshock, and that is expected.</strong> "
+          + "The window counts every catalogued tremor within 100 km, including the "
+          + "aftershocks of an earlier and larger earthquake. In 63% of the 535 recorded "
+          + "sequences the mainshock never reached the largest event that came before it, "
+          + "with a median shortfall of 0.3. Forcing the forecast above M "
+          + largest.toFixed(1) + " would raise test error from 0.49 to 0.83.";
+        frag.appendChild(gap);
+      }
 
       /* Occurrence probability. This answers a different question from the
          magnitude above it: not how large, but whether anything happens at all

@@ -1908,6 +1908,60 @@ def feature_descriptives(seq) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def foreshock_gap_table(seq) -> pd.DataFrame:
+    """Is the mainshock always larger than the largest event before it?
+
+    A reasonable reader assumes it must be, because that is what the word
+    mainshock suggests.  The observation window here is every catalogued event
+    inside the radius, which includes the decaying sequence of an earlier and
+    often larger earthquake, so the assumption does not hold and the model must
+    not be forced to honour it.  This table is the evidence.
+    """
+    mx = seq["Mag_max"].to_numpy(float)
+    y = seq["Target"].to_numpy(float)
+    gap = y - mx
+    n = len(y)
+    pct = lambda mask: f"{int(mask.sum()):,} ({100 * mask.mean():.1f}%)"
+    rows = [
+        ("Sequences analysed", f"{n:,}"),
+        ("Mainshock smaller than the largest event in its window", pct(gap < -1e-9)),
+        ("Mainshock equal to the largest event in its window", pct(np.abs(gap) <= 1e-9)),
+        ("Mainshock larger than the largest event in its window", pct(gap > 1e-9)),
+        ("Median difference (mainshock − largest event)", f"{np.median(gap):+.2f}"),
+        ("Central 90% of that difference",
+         f"{np.quantile(gap, 0.05):+.2f} to {np.quantile(gap, 0.95):+.2f}"),
+        ("Pearson r between the two magnitudes", f"{np.corrcoef(mx, y)[0, 1]:.3f}"),
+        ("Windows whose largest event already reached M 5.0",
+         pct(mx >= CFG.MAINSHOCK_MIN_MAG)),
+    ]
+    return pd.DataFrame(rows, columns=["Quantity", "Value"])
+
+
+def magnitude_floor_check(y_true, predictions, mag_max, models) -> pd.DataFrame:
+    """What a floor at the largest foreshock would cost.
+
+    Tests the intuition directly rather than arguing about it: replace every
+    forecast that sits below the largest event in its window with that event's
+    magnitude, and re-score.
+    """
+    y_true = np.asarray(y_true, float)
+    mag_max = np.asarray(mag_max, float)
+    rmse = lambda a: float(np.sqrt(np.mean((np.asarray(a, float) - y_true) ** 2)))
+    rows = []
+    for name in models:
+        p = np.asarray(predictions[name], float)
+        floored = np.maximum(p, mag_max)
+        rows.append({"Model": name, "RMSE as published": rmse(p),
+                     "RMSE with a floor at the largest foreshock": rmse(floored),
+                     "Change": rmse(floored) - rmse(p),
+                     "% of forecasts raised": 100 * float(np.mean(floored > p + 1e-12))})
+    rows.append({"Model": "Rule: forecast the largest foreshock itself",
+                 "RMSE as published": np.nan,
+                 "RMSE with a floor at the largest foreshock": rmse(mag_max),
+                 "Change": np.nan, "% of forecasts raised": np.nan})
+    return pd.DataFrame(rows)
+
+
 def target_feature_correlations(seq) -> pd.DataFrame:
     """Univariate association of each feature with the mainshock magnitude."""
     rows = []
@@ -3301,6 +3355,49 @@ def fig_predictions(results):
     return _save(fig, "fig_predictions.png")
 
 
+def fig_foreshock_gap(seq):
+    """The equal-magnitude line, and how often the data falls under it."""
+    mx = seq["Mag_max"].to_numpy(float)
+    y = seq["Target"].to_numpy(float)
+    gap = y - mx
+    below = 100 * float(np.mean(gap < 0))
+    med = float(np.median(gap))
+
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.25))
+
+    ax = axes[0]
+    lim = [min(mx.min(), y.min()) - 0.2, max(mx.max(), y.max()) + 0.2]
+    ax.fill_between(lim, lim, lim[0], color=FILL_SOFT, alpha=0.6, linewidth=0, zorder=0)
+    ax.plot(lim, lim, "--", color=ACCENT, lw=0.9, zorder=2)
+    ax.scatter(mx, y, s=13, facecolors="none", edgecolors=INK, linewidths=0.55, zorder=3)
+    ax.set_xlim(lim)
+    ax.set_ylim(lim)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("Largest event in the 14-day window")
+    ax.set_ylabel("Observed mainshock magnitude")
+    ax.set_title("(a) The dashed line is equal magnitude", loc="left", fontsize=9)
+    ax.text(0.97, 0.20, f"{below:.0f}% of sequences sit here,\nthe mainshock the smaller\nof the two",
+            transform=ax.transAxes, ha="right", va="top", fontsize=8.2, color=ACCENT,
+            linespacing=1.45, zorder=4)
+
+    ax = axes[1]
+    counts, _, _ = ax.hist(gap, bins=30, color=FILL, edgecolor=INK, linewidth=0.5)
+    top = counts.max()
+    ax.set_ylim(0, top * 1.22)
+    ax.axvline(0, ls="--", lw=0.9, color=ACCENT)
+    ax.axvline(med, lw=1.0, color=MUTED)
+    ax.annotate("no difference", xy=(0, top * 1.16), xytext=(6, 0),
+                textcoords="offset points", fontsize=8.0, color=ACCENT, va="center")
+    ax.annotate(f"median {med:+.2f}", xy=(med, top * 1.03), xytext=(-6, 0),
+                textcoords="offset points", fontsize=8.0, color=MUTED, va="center", ha="right")
+    ax.set_xlabel("Mainshock magnitude minus largest event in window")
+    ax.set_ylabel("Sequences")
+    ax.set_title("(b) Distribution of the difference", loc="left", fontsize=9)
+
+    fig.tight_layout()
+    return _save(fig, "fig_foreshock_gap.png")
+
+
 def fig_residuals(results):
     fig, ax = plt.subplots(figsize=(5.0, 3.2))
     for (label, payload), marker in zip(results.items(), ["o", "s", "^", "D"]):
@@ -3989,6 +4086,17 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  strip_zero_columns=("Pearson r", "Spearman ρ"), int_columns=("n",),
                  align={"Feature": LEFT, "Strength": LEFT})
 
+    report.table(foreshock_gap_table(sequences),
+                 "Relationship Between the Mainshock and the Largest Event Preceding It",
+                 "The observation window holds every catalogued event within "
+                 f"{CFG.RADIUS_KM:.0f} km in the preceding {CFG.T_OBS_DAYS:.0f} days, "
+                 "including the decaying sequence of an earlier and often larger "
+                 "earthquake. The mainshock is therefore not bounded below by the largest "
+                 "event in its own window, and most of the time it does not reach it. A "
+                 "model constrained to forecast upward would contradict the record.",
+                 slug="t31b_foreshock_gap",
+                 align={"Quantity": LEFT, "Value": LEFT})
+
     # ---- Occurrence forecasting ---------------------------------------- #
     print("\n      occurrence dataset and probability models ...")
     add_heading(doc, "Section F. Probability of Occurrence", 1)
@@ -4201,6 +4309,19 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  align={"Model and partition": LEFT, "95% CI for RMSE": LEFT},
                  landscape=True, font_size=Pt(8.5))
 
+    report.table(magnitude_floor_check(y_test, predictions,
+                                       sequences["Mag_max"].to_numpy(float)[idx_test],
+                                       top_models[:4]),
+                 "Cost of Requiring the Forecast to Exceed the Largest Foreshock",
+                 "Each forecast below the largest event in its own window is replaced by "
+                 "that event's magnitude and the partition is re-scored. The constraint "
+                 "raises about half of all forecasts and makes every model substantially "
+                 "worse, because the observed mainshock was itself below that level in "
+                 "most of those sequences. The final row applies the intuition on its own, "
+                 "with no model at all.",
+                 slug="t41b_magnitude_floor", decimals=3,
+                 align={"Model": LEFT})
+
     report.raw_table(_network_training_table(nets, sequence_backend()).astype(str),
                      "Training Outcome of the Three Sequence Networks",
                      "All three networks share the optimiser, the early-stopping rule and "
@@ -4351,6 +4472,13 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                                        for m in top_models[:3]}),
                       "Forecast Versus Observed Mainshock Magnitude for the Three Leading "
                       "Models", "The dashed line is perfect agreement.", width_in=6.4)
+        report.figure(fig_foreshock_gap(sequences),
+                      "Observed Mainshock Magnitude Against the Largest Event in Its "
+                      "Observation Window",
+                      "Panel (a) plots the two magnitudes against each other; the dashed "
+                      "line is equality and the shaded half is where the mainshock is the "
+                      "smaller of the two. Panel (b) is the distribution of the "
+                      "difference.", width_in=6.4)
         report.figure(fig_residuals({m: {"y_true": y_test, "y_pred": predictions[m]}
                                      for m in top_models[:3]}),
                       "Residuals Against Forecast Magnitude", None, width_in=5.0)

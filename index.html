@@ -125,6 +125,7 @@
     --accent-press: #f5a08a;   /* dark label clears 9.3:1 */
     --accent-soft: #2a1a16;
     --on-accent:   #140f0e;
+    --good:        #6fbf8f;   /* foreshock markers, 8.4:1 on the dark surface */
     --focus:       #e4735d;
     --shadow-color: 0 0 0;
     --sh-sm: 0 1px 2px rgb(0 0 0 / .4);
@@ -148,6 +149,7 @@
   --accent-press: #f5a08a;   /* dark label clears 9.3:1 */
   --accent-soft: #2a1a16;
   --on-accent:   #140f0e;
+  --good:        #6fbf8f;   /* foreshock markers, 8.4:1 on the dark surface */
   --focus:       #e4735d;
   --shadow-color: 0 0 0;
   --sh-sm: 0 1px 2px rgb(0 0 0 / .4);
@@ -639,7 +641,8 @@ tbody tr.is-top td:first-child { color: var(--accent); font-weight: 600; }
   margin-top: 36px; background: var(--line);
   border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden;
 }
-@media (min-width: 760px) { .howto { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 760px) { .howto { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1120px) { .howto { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .howto__step { background: var(--surface); padding: 26px 24px; display: flex; flex-direction: column; gap: 9px; }
 .howto__n {
   width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
@@ -800,6 +803,39 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   border: 1px solid var(--line-2); border-radius: var(--r-pill); padding: 7px 13px; color: var(--ink-2);
 }
 .readout__class.is-strong { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+/* Magnitude ruler. One scale carrying the forecast, its error band, the
+   largest event the reader entered and, for a recorded case, the outcome. */
+.gauge { margin-top: 26px; }
+.gauge__track {
+  position: relative; height: 34px; border-radius: var(--r-xs);
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.gauge__band {
+  position: absolute; top: 0; bottom: 0; background: var(--accent-soft);
+  border-left: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.gauge__grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.gauge__tick { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; }
+.gauge__tick.is-now { background: var(--accent); width: 3px; margin-left: -1.5px; }
+.gauge__tick.is-fore { background: var(--ink-2); }
+.gauge__tick.is-obs { background: var(--good); }
+.gauge__axis { position: relative; height: 16px; margin-top: 10px; }
+.gauge__axis span {
+  position: absolute; transform: translateX(-50%); font-family: var(--f-mono);
+  font-size: .62rem; letter-spacing: .06em; color: var(--mute);
+}
+.gauge__key { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 7px; }
+.gauge__key li { display: flex; align-items: center; gap: 9px; font-size: .84rem; }
+.gauge__swatch { width: 11px; height: 3px; border-radius: 2px; flex: none; }
+.gauge__key .is-now .gauge__swatch { background: var(--accent); }
+.gauge__key .is-fore .gauge__swatch { background: var(--ink-2); }
+.gauge__key .is-obs .gauge__swatch { background: var(--good); }
+.gauge__label { color: var(--mute); }
+.gauge__value {
+  margin-left: auto; font-family: var(--f-mono); font-variant-numeric: tabular-nums;
+  font-size: .84rem; color: var(--ink);
+}
 .kv { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
 .kv div { display: flex; flex-direction: column; gap: 3px; }
 .kv .k { font-family: var(--f-mono); font-size: .6rem; letter-spacing: .11em; text-transform: uppercase; color: var(--mute); }
@@ -1056,6 +1092,11 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <figcaption>Test-partition error for all sixteen models. Bars past the dashed line fail to beat the historical average.</figcaption>
       </figure>
 
+      <figure class="plate rv" style="margin-top:38px;">
+        <img src="figures/fig_foreshock_gap.png?v=4291327cde" width="2052" height="949" loading="lazy" decoding="async" alt="Two panels. The left plots observed mainshock magnitude against the largest event in its fourteen-day window, with a dashed equal-magnitude line and the half below it shaded; most points fall in the shaded half. The right is a histogram of the difference between the two, centred below zero.">
+        <figcaption>The mainshock is usually the smaller of the two. Points below the dashed line are sequences whose largest foreshock outranked the mainshock that followed, which is 63% of them.</figcaption>
+      </figure>
+
       <div class="results rv">
         <div class="tablewrap">
           <table>
@@ -1084,8 +1125,11 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <h3>Fault distance earns its place</h3>
           <p>Adding the distance from each foreshock to the nearest mapped fault lifted the best model from 21.4% to 23.6%. Three of the five fault features rank fifth, sixth and seventh of 27 by permutation importance. The other two measure nothing the model can use, and are reported as such.</p>
           <h3>Whether, not just how large</h3>
-          <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. Across nine combinations of magnitude and radius it beat the historical rate in one, by 3.4% Brier skill with a fold-to-fold spread several times that. The panel therefore reports the historical rates, each with its margin of error at 95% confidence.</p>
+          <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. A regularised logistic model over eight features beats the historical rate in all three M 5.0 cells, by 6.0%, 5.8% and 2.1% Brier skill at 50, 100 and 200 km. It finds nothing at M 6.0 and there are too few M 7.0 events to score at all, so those cells still report the observed frequency with its margin of error at 95% confidence.</p>
           <p>Those intervals come from a bootstrap that resamples whole years rather than individual anchors. The standard Wilson interval assumes independent trials, and these are overlapping windows cut from one catalogue where a single productive swarm supplies many of them. Dropping that assumption roughly triples the margin of error, from 2.1 to 5.6 percentage points on the headline figure, which is the honest width.</p>
+          <h3>Why a forecast can land below its own foreshocks</h3>
+          <p>The observation window holds every catalogued tremor within 100 km of the epicentre in the preceding fourteen days, which includes the decaying sequence of an earlier and larger earthquake. Across the 535 sequences the mainshock reached the largest event in its own window only 37% of the time, and the median difference is 0.3 magnitude units below it. Correlation between the two is 0.17.</p>
+          <p>Constraining the forecast to clear that level was tested rather than assumed. It raises about half of all forecasts and lifts Extra Trees error from 0.492 to 0.832, Random Forest from 0.498 to 0.837. Simply forecasting the largest foreshock, with no model at all, scores 1.016, nearly double the historical average. The constraint is intuitive and the record does not support it.</p>
           <h3>Depth beats recurrence</h3>
           <p>The recurrent networks land barely ahead of the baseline and every tree ensemble beats them. With 428 training sequences of ten timesteps, there is not enough data for a recurrent architecture to pay for its parameters.</p>
         </div>
@@ -1118,6 +1162,11 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <span class="howto__n" aria-hidden="true">3</span>
           <h3>Pick a model and forecast</h3>
           <p>The number beside each model is its test error in magnitude units, so lower is better. Press <strong>Forecast</strong> and the panel returns the expected magnitude, its uncertainty, and the historical chance that anything follows.</p>
+        </div>
+        <div class="howto__step">
+          <span class="howto__n" aria-hidden="true">4</span>
+          <h3>Read it against the record</h3>
+          <p>The forecast is not required to exceed the largest tremor you entered, and often will not. In 63% of the 535 recorded sequences the mainshock stayed below the largest event that preceded it, so a model forced to forecast upward would contradict the catalogue.</p>
         </div>
       </div>
 
@@ -1265,7 +1314,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <div class="limit">
           <span class="limit__t">Occurrence resists modelling</span>
           <h3>How large is learnable, whether is not</h3>
-          <p>Conditional on a mainshock following, its magnitude is forecast with 23.6% skill. Whether one follows at all is another matter: across nine magnitude and radius combinations the probability model beat the historical rate once, marginally. The honest answer to "what is the chance" remains the observed frequency.</p>
+          <p>Conditional on a mainshock following, its magnitude is forecast with 23.6% skill. Whether one follows at all is answered only for M 5.0, where the probability model beats the historical rate at all three radii. At M 6.0 it finds no skill and at M 7.0 there are too few events to score, so the honest answer there remains the observed frequency.</p>
         </div>
         <div class="limit">
           <span class="limit__t">Detection, not seismicity</span>
@@ -1510,6 +1559,6 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   }
 })();
 </script>
-<script src="app.js?v=6ae0bf88a6"></script>
+<script src="app.js?v=b850f16f71"></script>
 </body>
 </html>

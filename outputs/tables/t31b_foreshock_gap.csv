@@ -1,0 +1,9 @@
+Quantity,Value
+Sequences analysed,535
+Mainshock smaller than the largest event in its window,336 (62.8%)
+Mainshock equal to the largest event in its window,33 (6.2%)
+Mainshock larger than the largest event in its window,166 (31.0%)
+Median difference (mainshock − largest event),-0.30
+Central 90% of that difference,-1.30 to +1.20
+Pearson r between the two magnitudes,0.173
+Windows whose largest event already reached M 5.0,448 (83.7%)
