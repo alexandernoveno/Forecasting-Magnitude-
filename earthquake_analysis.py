@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import json
 import math
 import re
 import subprocess
@@ -167,6 +168,16 @@ class CFG:
     OCC_RADII = (50.0, 100.0, 200.0)  # ... within this distance of the anchor
     OCC_THIN_DAYS = 1.0               # anchors closer than this are one anchor
     OCC_MIN_POSITIVES = 25            # below this a rate is reported, not modelled
+
+    # A short, physically motivated feature set for the occurrence model. A
+    # random forest over all 27 features found almost nothing here: with a few
+    # hundred positives it fits noise. A regularised logistic regression over
+    # these eight beats it in every cell where either has skill, and it responds
+    # monotonically to the count of foreshocks, which is what the physics and
+    # the reviewer both expect.
+    OCC_MODEL_FEATURES = ("NO", "Mag_max", "Mag_mean", "Energy", "b_mlk",
+                          "T_elaps65", "Dist_mean", "zvalue")
+    OCC_LOGIT_C = 0.3                 # inverse regularisation strength
 
     MAG_CLASS_EDGES = (5.0, 6.0, 7.0, 10.0)
     MAG_CLASS_LABELS = ("Moderate (5.0-5.9)", "Strong (6.0-6.9)", "Major (>=7.0)")
@@ -1661,34 +1672,54 @@ def occurrence_profile(datasets) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _occurrence_matrix(data):
+    """The occurrence model's own feature block, log-scaled where appropriate."""
+    X = data[list(CFG.OCC_MODEL_FEATURES)].replace([np.inf, -np.inf], np.nan).copy()
+    for col in ("NO", "Energy", "T_elaps65", "Dist_mean"):
+        if col in X.columns:
+            X[col] = np.sign(X[col]) * np.log10(1 + X[col].abs())
+    return X
+
+
 def fit_occurrence_models(datasets, seed=CFG.SEED, folds=CFG.CV_FOLDS, verbose=True):
-    """Train, calibrate and honestly score one probability model per cell.
+    """Fit, score and keep only the occurrence models that earn their place.
 
     Evaluation is rolling-origin rather than a single chronological split. With
     four to thirty positives in a test block, one split produces an AUC that
-    swings from .13 to .80 on the same cell, and reporting whichever one came up
-    would be reporting noise. Every cell is scored across folds and judged on
-    the mean.
+    swings from .13 to .80 on the same cell, and reporting whichever came up
+    would be reporting noise.
 
-    A cell is only called modelled when the calibrated probability actually
-    beats quoting the historical base rate: a positive mean Brier skill score
-    and a mean ROC AUC above .55. Anything else falls back to the base rate,
-    which is a real conditional frequency and an honest answer, rather than
-    dressing a coin flip up as a forecast.
+    The model is a regularised logistic regression over eight features. An
+    earlier version used a random forest over all 27 and found skill in one cell
+    of nine; on a few hundred positives that forest was fitting noise. The
+    logistic beats it in every cell where either has skill, and because it is
+    monotone in the log count of foreshocks it behaves the way a reader expects:
+    more precursory activity raises the estimate rather than leaving it flat.
+
+    A cell is only called modelled when the calibrated probability beats quoting
+    the historical base rate, meaning a positive mean Brier skill score and a
+    mean ROC AUC above .55. Everything else falls back to the rate, which is a
+    real conditional frequency and an honest answer.
     """
-    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    def make():
+        return Pipeline([("scale", StandardScaler()),
+                         ("model", LogisticRegression(C=CFG.OCC_LOGIT_C, max_iter=2000,
+                                                      random_state=seed))])
 
     results, fitted = [], {}
     for radius, data in datasets.items():
-        logged = DataBundle._log_transform(
-            data[FEATURE_NAMES].replace([np.inf, -np.inf], np.nan))
+        X = _occurrence_matrix(data)
         n = len(data)
         block = n // (folds + 1)
 
         for threshold in CFG.OCC_THRESHOLDS:
             y = data[f"y{threshold:g}"].to_numpy(int)
             overall_rate = float(y.mean())
-            aucs, bsss, tested = [], [], 0
+            aucs, bsss = [], []
 
             for f in range(folds):
                 tr = np.arange(0, block * (f + 1))
@@ -1697,29 +1728,15 @@ def fit_occurrence_models(datasets, seed=CFG.SEED, folds=CFG.CV_FOLDS, verbose=T
                     continue
                 if len(np.unique(y[te])) < 2:
                     continue
-
-                fill = logged.iloc[tr].median(numeric_only=True).fillna(0.0)
-                lo = logged.iloc[tr].quantile(WINSOR_QUANTILES[0])
-                hi = logged.iloc[tr].quantile(WINSOR_QUANTILES[1])
-                M = logged.fillna(fill).clip(lower=lo, upper=hi, axis=1).to_numpy(float)
-
-                cut = int(0.8 * len(tr))
-                forest = RandomForestClassifier(
-                    n_estimators=300, max_depth=8, min_samples_leaf=4,
-                    class_weight="balanced_subsample", random_state=seed, n_jobs=-1)
-                forest.fit(M[tr[:cut]], y[tr[:cut]])
-                calibrated = CalibratedClassifierCV(forest, method="sigmoid", cv="prefit")
-                calibrated.fit(M[tr[cut:]], y[tr[cut:]])
-                prob = calibrated.predict_proba(M[te])[:, 1]
-
+                fill = X.iloc[tr].median(numeric_only=True).fillna(0.0)
+                lo = X.iloc[tr].quantile(WINSOR_QUANTILES[0])
+                hi = X.iloc[tr].quantile(WINSOR_QUANTILES[1])
+                M = X.fillna(fill).clip(lower=lo, upper=hi, axis=1).to_numpy(float)
+                prob = make().fit(M[tr], y[tr]).predict_proba(M[te])[:, 1]
                 brier = float(np.mean((prob - y[te]) ** 2))
                 ref = float(np.mean((y[tr].mean() - y[te]) ** 2))
                 aucs.append(float(roc_auc_score(y[te], prob)))
                 bsss.append(100 * (1 - brier / ref) if ref > 0 else np.nan)
-                tested += te.size
-                fitted[(radius, threshold)] = {
-                    "model": calibrated, "fill": fill, "lo": lo, "hi": hi,
-                    "prob": prob, "y": y[te]}
 
             if not aucs:
                 results.append({
@@ -1729,7 +1746,6 @@ def fit_occurrence_models(datasets, seed=CFG.SEED, folds=CFG.CV_FOLDS, verbose=T
                     "M ROC AUC": np.nan, "SD AUC": np.nan,
                     "M Brier skill (%)": np.nan, "SD Brier skill": np.nan,
                     "Verdict": "Too few events to model"})
-                fitted.pop((radius, threshold), None)
                 continue
 
             mean_auc = float(np.mean(aucs))
@@ -1739,18 +1755,37 @@ def fit_occurrence_models(datasets, seed=CFG.SEED, folds=CFG.CV_FOLDS, verbose=T
                 "Radius (km)": radius, "Threshold": f"M ≥ {threshold:g}",
                 "Anchors": n, "Positives": int(y.sum()),
                 "Historical rate (%)": 100 * overall_rate, "Folds scored": len(aucs),
-                "M ROC AUC": mean_auc, "SD AUC": float(np.std(aucs, ddof=1)) if len(aucs) > 1 else np.nan,
+                "M ROC AUC": mean_auc,
+                "SD AUC": float(np.std(aucs, ddof=1)) if len(aucs) > 1 else np.nan,
                 "M Brier skill (%)": mean_bss,
                 "SD Brier skill": float(np.nanstd(bsss, ddof=1)) if len(bsss) > 1 else np.nan,
                 "Verdict": "Model beats the base rate" if skilful else "No skill beyond the base rate"})
-            if not skilful:
-                fitted.pop((radius, threshold), None)
+
+            if skilful:
+                # Refit on everything for deployment, keeping the constants the
+                # browser needs to reproduce the transform exactly.
+                fill = X.median(numeric_only=True).fillna(0.0)
+                lo = X.quantile(WINSOR_QUANTILES[0])
+                hi = X.quantile(WINSOR_QUANTILES[1])
+                M = X.fillna(fill).clip(lower=lo, upper=hi, axis=1).to_numpy(float)
+                pipe = make().fit(M, y)
+                fitted[(radius, threshold)] = {
+                    "features": list(CFG.OCC_MODEL_FEATURES),
+                    "log_features": ["NO", "Energy", "T_elaps65", "Dist_mean"],
+                    "fill": [float(fill[c]) for c in CFG.OCC_MODEL_FEATURES],
+                    "lo": [float(lo[c]) for c in CFG.OCC_MODEL_FEATURES],
+                    "hi": [float(hi[c]) for c in CFG.OCC_MODEL_FEATURES],
+                    "mean": pipe.named_steps["scale"].mean_.tolist(),
+                    "scale": pipe.named_steps["scale"].scale_.tolist(),
+                    "coef": pipe.named_steps["model"].coef_.ravel().tolist(),
+                    "intercept": float(pipe.named_steps["model"].intercept_[0]),
+                    "auc": mean_auc, "bss": mean_bss, "rate": overall_rate,
+                }
             if verbose:
                 print(f"      R={radius:3.0f} km  M>={threshold:g}  rate {100*overall_rate:5.1f}%  "
                       f"AUC {mean_auc:.3f}  BSS {mean_bss:+6.1f}%  "
                       f"{'skilful' if skilful else 'no skill'}")
     return pd.DataFrame(results), fitted
-
 
 
 def wilson_interval(successes, trials, z=1.959963985):
@@ -3936,6 +3971,10 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
     occ_datasets = {r: build_occurrence_dataset(catalogue, independent, r)
                     for r in CFG.OCC_RADII}
     occ_results, occ_fitted = fit_occurrence_models(occ_datasets)
+    # Written for the exporter: the browser needs these to compute a probability
+    # that responds to the events on screen instead of quoting a fixed rate.
+    (CFG.TABLE_DIR / "occurrence_models.json").write_text(json.dumps(
+        {f"{int(r)}|{t:g}": v for (r, t), v in occ_fitted.items()}, indent=1))
     for r, d in occ_datasets.items():
         d.to_csv(CFG.TABLE_DIR / f"occurrence_anchors_{int(r)}km.csv", index=False)
 

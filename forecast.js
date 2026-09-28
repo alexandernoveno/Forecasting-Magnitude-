@@ -461,6 +461,32 @@
     return out;
   }
 
+  /**
+   * Occurrence probability for one cell, from the exported logistic model.
+   *
+   * Returns null where no model earned its place, so the caller falls back to
+   * the historical rate rather than inventing a number. The transform has to
+   * mirror _occurrence_matrix in earthquake_analysis.py exactly: log-scale the
+   * four heavy-tailed features, impute, clip, standardise, then the logit.
+   */
+  function occurrenceProbability(model, featureNames, raw) {
+    if (!model) { return null; }
+    var logSet = {};
+    (model.log_features || []).forEach(function (f) { logSet[f] = true; });
+    var z = model.intercept;
+    for (var i = 0; i < model.features.length; i++) {
+      var name = model.features[i];
+      var v = raw[featureNames.indexOf(name)];
+      if (logSet[name] && v !== null && isFinite(v)) {
+        v = Math.sign(v) * Math.log10(1 + Math.abs(v));
+      }
+      if (v === null || !isFinite(v)) { v = model.fill[i]; }
+      v = Math.min(Math.max(v, model.lo[i]), model.hi[i]);
+      z += model.coef[i] * ((v - model.mean[i]) / model.scale[i]);
+    }
+    return 1 / (1 + Math.exp(-Math.max(-60, Math.min(60, z))));
+  }
+
   /* --- public surface ----------------------------------------------------- */
 
   /**
@@ -483,6 +509,7 @@
 
   return {
     fmd: fmd,
+    occurrenceProbability: occurrenceProbability,
     nearestSourceKm: nearestSourceKm,
     faultFeatures: faultFeatures,
     mcMaxc: mcMaxc,

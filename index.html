@@ -79,6 +79,7 @@
   --accent-2:    #d9604a;
   --accent-press: #98301d;   /* white label clears 7.6:1 */
   --accent-soft: #fbede9;
+  --good:        #2f6d4f;   /* foreshock markers, 5.6:1 on surface */
   --on-accent:   #ffffff;
   --focus:       #b0392a;
   --shadow-color: 20 26 20;
@@ -650,6 +651,30 @@ tbody tr.is-top td:first-child { color: var(--accent); font-weight: 600; }
 .howto__step code {
   font-family: var(--f-mono); font-size: .86em; color: var(--ink-2);
   background: var(--surface-2); padding: 1px 5px; border-radius: 5px;
+}
+
+/* --- Locator map ---------------------------------------------------------- */
+.map { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.map__h {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.map__h span:first-child {
+  font-family: var(--f-mono); font-size: .6rem; letter-spacing: .11em;
+  text-transform: uppercase; color: var(--mute);
+}
+.map__h span:last-child { font-family: var(--f-mono); font-size: .62rem; color: var(--mute); }
+.map canvas {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--ground);
+}
+.map__key {
+  display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px;
+  font-family: var(--f-mono); font-size: .66rem; color: var(--mute);
+}
+.map__key i {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
 }
 
 /* --- Occurrence probability grid ------------------------------------------ */
@@ -1349,7 +1374,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   </div>
 </footer>
 
-<script src="forecast.js?v=1919e65d54"></script>
+<script src="forecast.js?v=2e429f7782"></script>
 <script>
 /* Interaction layer. Every animation is gated on prefers-reduced-motion and
    only transform and opacity are animated, so nothing here forces layout. */
@@ -1485,6 +1510,6 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   }
 })();
 </script>
-<script src="app.js?v=850d4a360d"></script>
+<script src="app.js?v=6ae0bf88a6"></script>
 </body>
 </html>

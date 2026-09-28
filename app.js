@@ -441,10 +441,16 @@
         setMsg("The forecast could not be computed: " + err.message, true);
         return;
       }
-      render(result, sorted, context);
+      var occFeatures = null;
+      try {
+        occFeatures = Forecast.buildFeatures(sorted, context, bundle);
+      } catch (err) {
+        occFeatures = null;
+      }
+      render(result, sorted, context, occFeatures, lat, lon);
     }
 
-    function render(result, events, context) {
+    function render(result, events, context, occFeatures, lat, lon) {
       var model = bundle.models[chosen];
       var m = result.magnitude;
       var band = classify(m);
@@ -503,8 +509,11 @@
          this and beat the historical rate in one cell of nine, so what is shown
          is the rate itself, with the model's measured result stated rather than
          implied. */
+      var mapPanel = buildMap(events, lat, lon, bundle.occurrence, occFeatures);
+      frag.appendChild(mapPanel);
+
       if (bundle.occurrence && bundle.occurrence.cells) {
-        frag.appendChild(buildProbability(bundle.occurrence));
+        frag.appendChild(buildProbability(bundle.occurrence, occFeatures));
       } else {
         var stale = document.createElement("p");
         stale.className = "prob prob__note";
@@ -523,6 +532,8 @@
       frag.appendChild(caution);
 
       el.readout.appendChild(frag);
+      /* Now that the map is attached it has a width, so draw it for real. */
+      if (mapPanel && typeof mapPanel.redraw === "function") { mapPanel.redraw(); }
     }
 
     /* Keep the selected pill in sync without :has(), so the state survives on
@@ -537,14 +548,184 @@
       if (e.target && e.target.matches && e.target.matches('.seg input')) { syncSegments(); }
     });
 
-    function buildProbability(occ) {
+
+    /**
+     * Locator map for the sequence.
+     *
+     * There is no tile service here and no map library. The basemap is the
+     * catalogue itself: 17,667 epicentres already trace the archipelago and its
+     * trenches, and they are the honest backdrop for a seismic forecast because
+     * they show exactly where the record has coverage. Drawn on canvas so the
+     * 200 km view and the whole-country inset cost one element between them.
+     */
+    function buildMap(events, lat, lon, occ, raw) {
+      var wrap = document.createElement("div");
+      wrap.className = "map";
+
+      var head = document.createElement("div");
+      head.className = "map__h";
+      head.innerHTML = "<span>Where this sequence sits</span><span>"
+        + lat.toFixed(2) + " N, " + lon.toFixed(2) + " E</span>";
+      wrap.appendChild(head);
+
+      var canvas = document.createElement("canvas");
+      wrap.appendChild(canvas);
+
+      var key = document.createElement("div");
+      key.className = "map__key";
+      key.innerHTML =
+        '<span><i style="background:var(--good)"></i>foreshocks you entered</span>'
+        + '<span><i style="background:var(--accent)"></i>forecast epicentre</span>'
+        + '<span><i style="background:var(--line-2)"></i>catalogued seismicity</span>'
+        + "<span>rings: 50, 100 and 200 km</span>";
+      wrap.appendChild(key);
+
+      function token(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      }
+
+      function draw() {
+        /* A canvas that is not laid out yet, or is in a pane with no width,
+           reports zero. Fall back to a usable width so the map draws something
+           correct rather than nothing at all. */
+        var box = canvas.getBoundingClientRect();
+        var W = box.width > 40 ? box.width
+              : (wrap.parentNode ? wrap.parentNode.getBoundingClientRect().width : 0);
+        if (!(W > 40)) { W = 560; }
+        var H = Math.round(Math.min(Math.max(W * 0.72, 260), 420));
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        canvas.style.height = H + "px";
+        var ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, W, H);
+
+        /* Equirectangular about the epicentre, longitude compressed by cos(lat)
+           so a circle of constant ground distance draws as a circle. */
+        var halfLat = 2.75;                       // about 305 km, fits the 200 km ring
+        var cosLat = Math.cos(lat * Math.PI / 180);
+        var scale = (H / 2 - 16) / halfLat;       // pixels per degree of latitude
+        function px(la, lo) {
+          return [W / 2 + (lo - lon) * cosLat * scale, H / 2 - (la - lat) * scale];
+        }
+
+        /* Catalogue backdrop. */
+        ctx.fillStyle = token("--line-2");
+        ctx.globalAlpha = 0.55;
+        for (var i = 0; i < catalogue.n; i++) {
+          var dLa = catalogue.lat[i] - lat;
+          if (dLa < -halfLat * 1.4 || dLa > halfLat * 1.4) { continue; }
+          var q = px(catalogue.lat[i], catalogue.lon[i]);
+          if (q[0] < -4 || q[0] > W + 4) { continue; }
+          ctx.fillRect(q[0], q[1], 1.4, 1.4);
+        }
+        ctx.globalAlpha = 1;
+
+        /* Radius rings, each labelled with this sequence's probability. */
+        var centre = px(lat, lon);
+        var models = (occ && occ.models) || {};
+        [200, 100, 50].forEach(function (km) {
+          var rpx = (km / 111.32) * scale;
+          ctx.strokeStyle = token("--accent");
+          ctx.globalAlpha = 0.34;
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(centre[0], centre[1], rpx, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+
+          var label = km + " km";
+          var m = models[km + "|5"];
+          if (m && raw) {
+            var pr = Forecast.occurrenceProbability(m, occ.feature_names, raw);
+            if (pr !== null && isFinite(pr)) {
+              label += "  " + (100 * pr).toFixed(0) + "%";
+            }
+          }
+          ctx.fillStyle = token("--mute");
+          ctx.font = "10px 'IBM Plex Mono', monospace";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "bottom";
+          ctx.fillText(label, centre[0], centre[1] - rpx - 3);
+        });
+
+        /* Foreshocks, sized by magnitude. */
+        events.forEach(function (e) {
+          var q = px(e.lat, e.lon);
+          var rad = 2.6 + Math.max(e.mag - 3.5, 0) * 1.5;
+          ctx.fillStyle = token("--good");
+          ctx.globalAlpha = 0.85;
+          ctx.beginPath();
+          ctx.arc(q[0], q[1], rad, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        });
+
+        /* Forecast epicentre. */
+        ctx.fillStyle = token("--accent");
+        ctx.beginPath();
+        ctx.arc(centre[0], centre[1], 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = token("--surface");
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+
+        /* Whole-country inset, so the reader can place the view at a glance. */
+        var iw = 74, ih = 96, ix = W - iw - 12, iy = 12;
+        ctx.fillStyle = token("--surface");
+        ctx.strokeStyle = token("--line-2");
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.rect(ix, iy, iw, ih);
+        ctx.fill();
+        ctx.stroke();
+        var LA0 = 4, LA1 = 21, LO0 = 116, LO1 = 128;
+        function ipx(la, lo) {
+          return [ix + ((lo - LO0) / (LO1 - LO0)) * iw,
+                  iy + ih - ((la - LA0) / (LA1 - LA0)) * ih];
+        }
+        ctx.fillStyle = token("--line-2");
+        for (var j = 0; j < catalogue.n; j += 3) {
+          var s2 = ipx(catalogue.lat[j], catalogue.lon[j]);
+          ctx.fillRect(s2[0], s2[1], 0.7, 0.7);
+        }
+        var here = ipx(lat, lon);
+        ctx.fillStyle = token("--accent");
+        ctx.beginPath();
+        ctx.arc(here[0], here[1], 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      /* The canvas has no width until it is in the document, and a frame
+         callback never arrives in a pane that is not compositing, so the
+         caller redraws once the node is attached and this is only a backstop. */
+      wrap.redraw = draw;
+      if (typeof requestAnimationFrame === "function") { requestAnimationFrame(draw); }
+      var scheme = window.matchMedia("(prefers-color-scheme: dark)");
+      if (scheme.addEventListener) { scheme.addEventListener("change", draw); }
+      var resizeTimer = null;
+      window.addEventListener("resize", function () {
+        window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(draw, 150);
+      });
+      return wrap;
+    }
+
+    function buildProbability(occ, raw) {
       var wrap = document.createElement("div");
       wrap.className = "prob";
 
+      var models = occ.models || {};
+      var anyModel = raw && Object.keys(models).length > 0;
+
       var head = document.createElement("div");
       head.className = "prob__h";
-      head.innerHTML = "<span>Chance something follows, next "
-        + occ.horizon_days + " days</span><span>historical rate</span>";
+      head.innerHTML = "<span>Chance something follows, next " + occ.horizon_days
+        + " days</span><span>" + (anyModel ? "for this sequence" : "historical rate")
+        + "</span>";
       wrap.appendChild(head);
 
       var table = document.createElement("table");
@@ -572,14 +753,32 @@
             var moe = (cell.block_moe !== null && cell.block_moe !== undefined)
               ? cell.block_moe : cell.moe;
             var thin = cell.positives < 25;
-            body += '<td style="text-align:right" class="' + (thin ? "thin" : "v") + '"'
-              + ' title="' + cell.positives + " of " + cell.anchors + " occasions"
-              + (ci ? ", " + conf + "% CI " + ci + "%" : "") + '">'
-              + cell.rate.toFixed(1) + "%" + (thin ? "*" : "")
-              + (moe !== null && moe !== undefined
-                  ? '<span class="moe">&plusmn;' + moe.toFixed(1) + "</span>"
-                  : "")
-              + "</td>";
+            var model = models[r + "|" + t];
+            var fitted = (raw && model)
+              ? Forecast.occurrenceProbability(model, occ.feature_names, raw) : null;
+
+            if (fitted !== null && fitted !== undefined && isFinite(fitted)) {
+              /* A model earned its place in this cell, so the headline is its
+                 estimate for the events on screen and the historical rate sits
+                 underneath as the reference it has to beat. */
+              body += '<td style="text-align:right" class="v"'
+                + ' title="Model estimate for this sequence. Historical rate '
+                + cell.rate.toFixed(1) + "%, " + conf + "% CI " + ci + "%. "
+                + "Brier skill " + cell.bss.toFixed(1) + '% over that rate.">'
+                + (100 * fitted).toFixed(1) + "%"
+                + '<span class="moe">base ' + cell.rate.toFixed(1) + "%</span>"
+                + "</td>";
+            } else {
+              body += '<td style="text-align:right" class="' + (thin ? "thin" : "v") + '"'
+                + ' title="Historical rate. ' + cell.positives + " of " + cell.anchors
+                + " occasions" + (ci ? ", " + conf + "% CI " + ci + "%" : "")
+                + ". No model beat this rate, so the rate is shown." + '">'
+                + cell.rate.toFixed(1) + "%" + (thin ? "*" : "")
+                + (moe !== null && moe !== undefined
+                    ? '<span class="moe">&plusmn;' + moe.toFixed(1) + "</span>"
+                    : "")
+                + "</td>";
+            }
           }
         });
         body += "</tr>";
@@ -596,6 +795,18 @@
       /* Anchor counts differ per radius, so quote the range rather than one row. */
       var counts = occ.cells.map(function (c) { return c.anchors; });
       var lo = Math.min.apply(null, counts), hi = Math.max.apply(null, counts);
+      if (anyModel) {
+        note.innerHTML = "The M 5.0 column is a model estimate for the events you entered, "
+          + "so it moves as you add or remove foreshocks; the smaller figure beneath is the "
+          + "historical rate it has to beat. That model is a regularised logistic regression "
+          + "over eight features and beats the rate by 2 to 6% Brier skill depending on "
+          + "radius. No model beat the rate for M 6.0 or above, so those columns show the "
+          + "historical frequency with its margin of error at " + conf + "% confidence, from "
+          + "a bootstrap resampling whole years rather than individual anchors. Hover any "
+          + "cell for the detail. Starred values rest on fewer than 25 historical cases.";
+        wrap.appendChild(note);
+        return wrap;
+      }
       note.innerHTML = "How often an earthquake of that size actually followed, across "
         + lo.toLocaleString() + " to " + hi.toLocaleString() + " historical occasions "
         + "(depending on radius) when a sequence like this was already under way. "

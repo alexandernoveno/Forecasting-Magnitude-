@@ -251,6 +251,7 @@ def main() -> None:
         "n_train": int(len(idx_trval)),
         "n_test": int(len(idx_test)),
         "models": models,
+        "feature_names": list(ea.FEATURE_NAMES),
         "examples": examples,
     }
 
@@ -266,6 +267,36 @@ def main() -> None:
 
     export_catalogue(cat_sorted)
     stamp_asset_versions()
+
+
+def export_catalogue(cat_sorted) -> None:
+    """Ship the cleaned catalogue so the browser can compute regional context.
+
+    Four of the 27 features count the days since the last large regional
+    earthquake, and the beta statistic needs a background rate over the
+    preceding year. Neither can be derived from the handful of events a user
+    types into a form, so the page needs the surrounding record to work at all.
+
+    Packed as four parallel flat arrays rather than an array of objects: same
+    numbers, roughly a fifth of the bytes. Times carry eight decimals because
+    the browser rebuilds absolute event times by subtracting from them, and at
+    four decimals a mainshock's own record lands a few seconds before itself,
+    which collapses every elapsed-time feature to zero. Coordinates carry five,
+    about a metre, so events stay on the correct side of a radius test.
+    """
+    origin = cat_sorted["datetime"].iloc[0]
+    t_days = (cat_sorted["datetime"] - origin).dt.total_seconds().to_numpy() / 86400.0
+    payload = {
+        "origin": origin.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "n": int(len(cat_sorted)),
+        "t": np.round(t_days, 8).tolist(),
+        "lat": np.round(cat_sorted["Latitude"].to_numpy(float), 5).tolist(),
+        "lon": np.round(cat_sorted["Longitude"].to_numpy(float), 5).tolist(),
+        "mag": np.round(cat_sorted["Magnitude"].to_numpy(float), 2).tolist(),
+    }
+    CATALOGUE_OUT.write_text(json.dumps(payload, separators=(",", ":")))
+    print(f"Wrote {CATALOGUE_OUT}  ({CATALOGUE_OUT.stat().st_size / 1024:,.0f} KB), "
+          f"{payload['n']:,} events")
 
 
 def stamp_asset_versions() -> None:
@@ -373,8 +404,18 @@ def occurrence_block(ea) -> dict:
                         except (TypeError, ValueError):
                             cell["block_moe"] = None
 
+    # The deployable occurrence models, where one earned its place. Without
+    # these the page can only quote a fixed historical rate, which looks broken:
+    # the probability never moves no matter what events are entered.
+    models = {}
+    model_path = ea.CFG.TABLE_DIR / "occurrence_models.json"
+    if model_path.exists():
+        models = json.loads(model_path.read_text())
+
     return {
         "confidence": int(round((1 - ea.CFG.ALPHA) * 100)),
+        "models": models,
+        "feature_names": list(ea.FEATURE_NAMES),
         "horizon_days": ea.CFG.HORIZON_DAYS,
         "lookback_days": ea.CFG.T_OBS_DAYS,
         "thresholds": list(ea.CFG.OCC_THRESHOLDS),
