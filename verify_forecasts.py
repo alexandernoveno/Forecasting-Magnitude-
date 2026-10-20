@@ -21,10 +21,21 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
-DATASET = ROOT / "outputs" / "Foreshock_Sequences.xlsx"
-BUNDLE = ROOT / "model_bundle.json"
-VECTORS = ROOT / "verification_vectors.json"
-REPORT = ROOT / "outputs" / "tables" / "verification_forecasts.csv"
+
+
+def beside(*candidates):
+    """First candidate that exists, so this runs from the repository or from a
+    flat folder handed to a reviewer."""
+    for name in candidates:
+        if (ROOT / name).exists():
+            return ROOT / name
+    return ROOT / candidates[0]
+
+
+DATASET = beside("outputs/Foreshock_Sequences.xlsx", "Foreshock_Sequences.xlsx")
+BUNDLE = beside("model_bundle.json")
+VECTORS = beside("verification_vectors.json")
+REPORT = beside("outputs/tables", ".") / "verification_forecasts.csv"
 
 PRED_TOL = 1e-5          # a replayed prediction should match to six decimals
 RF_TOL = PRED_TOL        # no looser than the rest, now that the float32 cast matches
@@ -224,7 +235,7 @@ def check_forecasts(bundle, vectors):
     out["Extra Trees error"] = np.round(out[best["label"]] - actual, 3)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(REPORT, index=False)
-    print(f"\n  Per-sequence comparison written to {REPORT.relative_to(ROOT)}")
+    print(f"\n  Per-sequence comparison written to {REPORT.name}")
 
 
 def main() -> int:

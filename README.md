@@ -30,6 +30,7 @@ will occur, or when, or where.
 | `verify_bundle.cjs` | Checks the browser reimplementation against Python |
 | `verify_forecasts.py` | Independent check of the data set and the forecasts, for reviewers |
 | `export_sequence_dataset.py` | Writes every mainshock with its foreshocks to a workbook |
+| `build_client_package.py` | Copies the files a reviewer needs into `For Client/` |
 | `outputs/` | Generated tables, figures and the Word document |
 | `Earthquake Data Sets NEW.xlsx` | The source catalogue with mapped fault distances |
 
