@@ -13,6 +13,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "outputs" / "Foreshock_Sequences.xlsx"
+SPLITS = ROOT / "outputs" / "Train_Test_Datasets.xlsx"
 
 
 def load(name):
@@ -111,6 +112,50 @@ def main() -> None:
     fores.to_csv(ROOT / "outputs" / "tables" / "sequences_foreshocks.csv", index=False)
     print(f"Wrote {OUT}")
     print(f"  {len(mains):,} mainshocks, {len(fores):,} foreshock records")
+
+    write_splits(ea, sequences, partition)
+
+
+def write_splits(ea, sequences, partition) -> None:
+    """The same sequences as the 27-feature matrix the models are fitted on,
+    one sheet per chronological partition. This is the modelling data set; the
+    other workbook is the raw events behind it."""
+    table = sequences.copy()
+    table.insert(0, "Partition", partition)
+    table.insert(0, "Sequence ID", [f"M{i + 1:03d}" for i in range(len(table))])
+
+    rows = []
+    for name in ("Training", "Validation", "Test"):
+        part = table[table["Partition"] == name]
+        rows.append({
+            "Partition": name, "n sequences": len(part),
+            "% of total": round(100 * len(part) / len(table), 1),
+            "First mainshock": part["MainshockTime"].min(),
+            "Last mainshock": part["MainshockTime"].max(),
+            "Mean target M": round(float(part["Target"].mean()), 3),
+            "SD": round(float(part["Target"].std(ddof=1)), 3),
+            "Min": float(part["Target"].min()), "Max": float(part["Target"].max()),
+            "n (M >= 6.0)": int((part["Target"] >= 6.0).sum()),
+        })
+    summary = pd.DataFrame(rows)
+
+    dictionary = pd.DataFrame(
+        [{"#": i + 1, "Feature": f,
+          "Category": ea.FEATURE_CATEGORIES.get(f, ""),
+          "Description": ea.FEATURE_DESCRIPTIONS.get(f, "")}
+         for i, f in enumerate(ea.FEATURE_NAMES)])
+
+    with pd.ExcelWriter(SPLITS, engine="openpyxl",
+                        datetime_format="yyyy-mm-dd hh:mm:ss") as xl:
+        summary.to_excel(xl, sheet_name="Summary", index=False)
+        for name in ("Training", "Validation", "Test"):
+            table[table["Partition"] == name].to_excel(xl, sheet_name=name, index=False)
+        dictionary.to_excel(xl, sheet_name="Feature Dictionary", index=False)
+        for sheet in xl.sheets.values():
+            sheet.freeze_panes = "A2"
+    print(f"Wrote {SPLITS}")
+    print("  " + ", ".join(f"{r['Partition']} {r['n sequences']}" for r in rows)
+          + f", {len(ea.FEATURE_NAMES)} features per row")
 
 
 if __name__ == "__main__":
