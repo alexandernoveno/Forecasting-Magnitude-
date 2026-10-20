@@ -947,11 +947,11 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <span class="stat__k">Earthquakes retained after cleaning, 1907 to 2026</span>
         </div>
         <div class="stat">
-          <span class="stat__v num" data-count="535">535</span>
-          <span class="stat__k">Mainshocks with a usable foreshock window</span>
+          <span class="stat__v num" data-count="199">199</span>
+          <span class="stat__k">Mainshocks larger than every tremor that preceded them</span>
         </div>
         <div class="stat">
-          <span class="stat__v num accent" data-count="23.6" data-decimals="1" data-suffix="%">23.6%</span>
+          <span class="stat__v num accent" data-count="28.9" data-decimals="1" data-suffix="%">28.9%</span>
           <span class="stat__k">Error reduction over the historical average</span>
         </div>
         <div class="stat">
@@ -1088,50 +1088,51 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
       </div>
 
       <figure class="plate rv" style="margin-top:42px;">
-        <img src="figures/fig_leaderboard.png?v=9ab16a610e" width="2191" height="1864" loading="lazy" decoding="async" alt="Horizontal bar chart of test root mean squared error for sixteen forecasting models. Extra Trees and Random Forest are shortest. A dashed line marks the climatology baseline; the multilayer perceptron, the convolutional network and the persistence baseline extend past it.">
+        <img src="figures/fig_leaderboard.png?v=ca7df1866f" width="2137" height="1864" loading="lazy" decoding="async" alt="Horizontal bar chart of test root mean squared error for sixteen forecasting models. Extra Trees and Random Forest are shortest. A dashed line marks the climatology baseline; the multilayer perceptron, the convolutional network and the persistence baseline extend past it.">
         <figcaption>Test-partition error for all sixteen models. Bars past the dashed line fail to beat the historical average.</figcaption>
       </figure>
 
       <figure class="plate rv" style="margin-top:38px;">
         <img src="figures/fig_foreshock_gap.png?v=4291327cde" width="2052" height="949" loading="lazy" decoding="async" alt="Two panels. The left plots observed mainshock magnitude against the largest event in its fourteen-day window, with a dashed equal-magnitude line and the half below it shaded; most points fall in the shaded half. The right is a histogram of the difference between the two, centred below zero.">
-        <figcaption>The mainshock is usually the smaller of the two. Points below the dashed line are sequences whose largest foreshock outranked the mainshock that followed, which is 63% of them.</figcaption>
+        <figcaption>What the mainshock-is-largest rule removes. Every point below the dashed line is a window that held an earthquake larger than the mainshock it was meant to precede. Those 533 windows are excluded; the analysis keeps only the points on or above the line.</figcaption>
       </figure>
 
       <div class="results rv">
         <div class="tablewrap">
           <table>
-            <caption>Test partition, 107 held-out sequences</caption>
+            <caption>Test partition, 40 held-out sequences, May 2021 to Jan 2026</caption>
             <thead>
               <tr><th scope="col">Model</th><th scope="col">RMSE</th><th scope="col">R squared</th><th scope="col">Skill</th></tr>
             </thead>
             <tbody>
-              <tr class="is-top"><td>Extra Trees</td><td>0.492</td><td>0.147</td><td class="accent">+23.6%</td></tr>
-              <tr><td>Random Forest</td><td>0.498</td><td>0.125</td><td class="accent">+21.6%</td></tr>
-              <tr><td>ARIMAX</td><td>0.510</td><td>0.085</td><td class="accent">+18.0%</td></tr>
-              <tr><td>Elastic Net</td><td>0.513</td><td>0.073</td><td class="accent">+17.0%</td></tr>
-              <tr><td>k-Nearest Neighbours</td><td>0.514</td><td>0.068</td><td class="accent">+16.6%</td></tr>
-              <tr><td>GRU</td><td>0.551</td><td>-0.069</td><td class="accent">+4.2%</td></tr>
-              <tr><td>LSTM</td><td>0.560</td><td>-0.103</td><td class="accent">+1.2%</td></tr>
-              <tr class="is-ref"><td>Climatology baseline</td><td>0.563</td><td>-0.116</td><td>0.0%</td></tr>
-              <tr><td>Multilayer Perceptron</td><td>0.585</td><td>-0.206</td><td>-8.0%</td></tr>
-              <tr><td>1D-CNN</td><td>0.675</td><td>-0.606</td><td>-43.9%</td></tr>
+              <tr class="is-top"><td>Extra Trees</td><td>0.510</td><td>0.278</td><td class="accent">+28.9%</td></tr>
+              <tr><td>Random Forest</td><td>0.532</td><td>0.212</td><td class="accent">+22.4%</td></tr>
+              <tr><td>k-Nearest Neighbours</td><td>0.558</td><td>0.133</td><td class="accent">+14.7%</td></tr>
+              <tr><td>Support Vector Regression</td><td>0.560</td><td>0.128</td><td class="accent">+14.2%</td></tr>
+              <tr><td>Elastic Net</td><td>0.572</td><td>0.089</td><td class="accent">+10.4%</td></tr>
+              <tr><td>Gradient Boosting</td><td>0.587</td><td>0.042</td><td class="accent">+5.8%</td></tr>
+              <tr class="is-ref"><td>Climatology baseline</td><td>0.605</td><td>-0.016</td><td>0.0%</td></tr>
+              <tr><td>LSTM</td><td>0.608</td><td>-0.028</td><td>-1.2%</td></tr>
+              <tr><td>GRU</td><td>0.614</td><td>-0.049</td><td>-3.2%</td></tr>
+              <tr><td>ARIMAX</td><td>0.707</td><td>-0.390</td><td>-36.8%</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="prose">
           <h3>What the numbers say</h3>
-          <p>An Extra Trees ensemble on 27 features cuts squared error by 23.6% against quoting the historical average magnitude. That is real skill. It is also small: the typical error is still about half a magnitude unit, the difference between a tremor and a damaging event.</p>
+          <p>An Extra Trees ensemble on 27 features cuts squared error by 28.9% against quoting the historical average magnitude, and explains 27.8% of the variance in the held-out period. That is real skill. It is also small: the typical error is still about half a magnitude unit, the difference between a tremor and a damaging event.</p>
           <h3>Fault distance earns its place</h3>
-          <p>Adding the distance from each foreshock to the nearest mapped fault lifted the best model from 21.4% to 23.6%. Three of the five fault features rank fifth, sixth and seventh of 27 by permutation importance. The other two measure nothing the model can use, and are reported as such.</p>
+          <p>Adding the distance from each foreshock to the nearest mapped fault lifts the best model from 28.3% to 28.9%, a smaller gain than it looked on the earlier, larger sample. Three of the five fault features rank sixth, ninth and eleventh of 27 by permutation importance. The other two measure nothing the model can use, and are reported as such.</p>
           <h3>Whether, not just how large</h3>
           <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. A regularised logistic model over eight features beats the historical rate in all three M 5.0 cells, by 6.0%, 5.8% and 2.1% Brier skill at 50, 100 and 200 km. It finds nothing at M 6.0 and there are too few M 7.0 events to score at all, so those cells still report the observed frequency with its margin of error at 95% confidence.</p>
           <p>Those intervals come from a bootstrap that resamples whole years rather than individual anchors. The standard Wilson interval assumes independent trials, and these are overlapping windows cut from one catalogue where a single productive swarm supplies many of them. Dropping that assumption roughly triples the margin of error, from 2.1 to 5.6 percentage points on the headline figure, which is the honest width.</p>
-          <h3>Why a forecast can land below its own foreshocks</h3>
-          <p>The observation window holds every catalogued tremor within 100 km of the epicentre in the preceding fourteen days, which includes the decaying sequence of an earlier and larger earthquake. Across the 535 sequences the mainshock reached the largest event in its own window only 37% of the time, and the median difference is 0.3 magnitude units below it. Correlation between the two is 0.17.</p>
-          <p>Constraining the forecast to clear that level was tested rather than assumed. It raises about half of all forecasts and lifts Extra Trees error from 0.492 to 0.832, Random Forest from 0.498 to 0.837. Simply forecasting the largest foreshock, with no model at all, scores 1.016, nearly double the historical average. The constraint is intuitive and the record does not support it.</p>
+          <h3>The mainshock is the largest event, and now the code says so</h3>
+          <p>A mainshock is by definition the largest earthquake of its sequence. An earlier version of this dataset broke that rule in 533 of 732 windows, because the observation radius of 100 km is far wider than Maeda's spatial window L, which is 5 km at M 5.0 and 16 km at M 6.0. Larger earthquakes that declustering had correctly assigned to a different cluster were being swept in as foreshocks. 92% of them sat outside that event's own Maeda radius, a median 48 km away.</p>
+          <p>Those windows are now rejected. The dataset holds 199 sequences in which no tremor exceeds the mainshock, and the result improved rather than suffered: skill rose from 23.6% to 28.9% and the variance explained more than doubled, from 0.147 to 0.278. Replacing any forecast that falls below the largest foreshock now changes the leading model's error by nothing at all, which is the test that the forecasts obey the definition rather than merely being assumed to.</p>
+          <p>The cost is sample size. 199 sequences across 40 held-out cases is a thin basis, and the confidence interval on the best model runs from 0.366 to 0.642.</p>
           <h3>Depth beats recurrence</h3>
-          <p>The recurrent networks land barely ahead of the baseline and every tree ensemble beats them. With 428 training sequences of ten timesteps, there is not enough data for a recurrent architecture to pay for its parameters.</p>
+          <p>The recurrent networks now land behind the baseline, and every tree ensemble beats them. With 119 training sequences of ten timesteps there is nothing like enough data for a recurrent architecture to pay for its parameters. ARIMAX falls furthest, because an order-indexed series of 119 mainshocks spread over 43 years is not a time series in any useful sense.</p>
         </div>
       </div>
     </div>
@@ -1166,7 +1167,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <div class="howto__step">
           <span class="howto__n" aria-hidden="true">4</span>
           <h3>Read it against the record</h3>
-          <p>The forecast is not required to exceed the largest tremor you entered, and often will not. In 63% of the 535 recorded sequences the mainshock stayed below the largest event that preceded it, so a model forced to forecast upward would contradict the catalogue.</p>
+          <p>Every recorded sequence here is one where the mainshock outranked all of its foreshocks, which is what the word means. Expect the forecast to sit at or above the largest tremor you entered. If it lands below, the model has under-forecast, and the panel says so rather than hiding it.</p>
         </div>
       </div>
 
@@ -1309,12 +1310,12 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <div class="limit">
           <span class="limit__t">Foreshocks are rare</span>
           <h3>Most large events arrive unannounced</h3>
-          <p>Of 3,261 candidate mainshocks, only 535 had enough catalogued activity in the preceding fortnight to support a forecast at all. The method is silent for the great majority of damaging earthquakes.</p>
+          <p>Of 3,261 candidate mainshocks, 2,528 had too little catalogued activity in the preceding fortnight to support a forecast, and a further 533 were not the largest event in their own window. 199 remain. The method is silent for the great majority of damaging earthquakes.</p>
         </div>
         <div class="limit">
           <span class="limit__t">Occurrence resists modelling</span>
           <h3>How large is learnable, whether is not</h3>
-          <p>Conditional on a mainshock following, its magnitude is forecast with 23.6% skill. Whether one follows at all is answered only for M 5.0, where the probability model beats the historical rate at all three radii. At M 6.0 it finds no skill and at M 7.0 there are too few events to score, so the honest answer there remains the observed frequency.</p>
+          <p>Conditional on a mainshock following, its magnitude is forecast with 28.9% skill. Whether one follows at all is answered only for M 5.0, where the probability model beats the historical rate at all three radii. At M 6.0 it finds no skill and at M 7.0 there are too few events to score, so the honest answer there remains the observed frequency.</p>
         </div>
         <div class="limit">
           <span class="limit__t">Detection, not seismicity</span>
@@ -1559,6 +1560,6 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   }
 })();
 </script>
-<script src="app.js?v=b850f16f71"></script>
+<script src="app.js?v=97c5be831d"></script>
 </body>
 </html>

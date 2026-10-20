@@ -1,6 +1,6 @@
-Model,Extra Trees,Random Forest,ARIMAX,Elastic Net,k-Nearest Neighbours
-Extra Trees,—,.540,.828,.984,.725
-Random Forest,.540,—,.944,.715,.488
-ARIMAX,.828,.944,—,.513,.486
-Elastic Net,.984,.715,.513,—,.639
-k-Nearest Neighbours,.725,.488,.486,.639,—
+Model,Extra Trees,Random Forest,k-Nearest Neighbours,Support Vector Regression,Elastic Net
+Extra Trees,—,.439,.225,.099,.158
+Random Forest,.439,—,.383,.191,.211
+k-Nearest Neighbours,.225,.383,—,.540,.959
+Support Vector Regression,.099,.191,.540,—,.617
+Elastic Net,.158,.211,.959,.617,—

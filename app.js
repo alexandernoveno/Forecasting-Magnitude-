@@ -582,22 +582,20 @@
       frag.appendChild(buildGauge(m, model.rmse, largest, actual));
       frag.appendChild(kv);
 
-      /* The forecast is free to land below the largest event on screen, and a
-         reader who has not seen the record will read that as a fault. It is not:
-         the window holds every catalogued tremor inside the radius, aftershocks
-         of an earlier larger earthquake included, and in 63 per cent of the 535
-         recorded sequences the mainshock never reached the largest event that
-         preceded it. Forcing the forecast upward costs 0.34 magnitude units of
-         accuracy, so the note explains rather than the model complies. */
+      /* A mainshock is the largest earthquake of its sequence, so a forecast
+         under the largest event on screen is the model under-forecasting, not
+         a definition being bent. The dataset enforces the rule, the leading
+         model respects it on every held-out case, and the weaker ones do not
+         always, so say which happened instead of quietly clamping. */
       if (m < largest - 0.005) {
         var gap = document.createElement("p");
         gap.className = "caution";
-        gap.innerHTML = "<strong>Lower than the largest foreshock, and that is expected.</strong> "
-          + "The window counts every catalogued tremor within 100 km, including the "
-          + "aftershocks of an earlier and larger earthquake. In 63% of the 535 recorded "
-          + "sequences the mainshock never reached the largest event that came before it, "
-          + "with a median shortfall of 0.3. Forcing the forecast above M "
-          + largest.toFixed(1) + " would raise test error from 0.49 to 0.83.";
+        gap.innerHTML = "<strong>This forecast is below the largest foreshock, which means the model under-forecast.</strong> "
+          + "A mainshock is the largest earthquake of its sequence, so M "
+          + largest.toFixed(1) + " is the floor this sequence sets. Every one of the 199 "
+          + "recorded sequences obeys that rule, and Extra Trees respects it on all 40 "
+          + "held-out cases. Treat M " + largest.toFixed(1) + " as the lower bound here, "
+          + "or switch to Extra Trees.";
         frag.appendChild(gap);
       }
 

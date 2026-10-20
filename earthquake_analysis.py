@@ -158,6 +158,15 @@ class CFG:
     RADIUS_KM = 100.0                 # spatial radius of the observation window
     MIN_FORESHOCKS = 3                # sparser windows cannot support a b-value
     BACKGROUND_DAYS = 365.0           # reference interval for the beta statistic
+    # A mainshock is the largest earthquake of its sequence; an event that
+    # surpasses everything before it is the mainshock by definition. The
+    # observation radius is far wider than Maeda's spatial window L, which is
+    # 5 km at M 5.0 and 16 km at M 6.0, so without this rule the window sweeps
+    # in larger earthquakes that declustering had correctly assigned to a
+    # different cluster, and the target ends up smaller than its own
+    # "foreshocks". The forecast this produces is explicitly conditional: given
+    # that a mainshock follows, how large is it.
+    REQUIRE_FORESHOCKS_SMALLER = True
 
     # --- Occurrence forecasting ------------------------------------------- #
     # The magnitude model answers "how large, given that one follows". This
@@ -1462,14 +1471,20 @@ def _window_features(mags, times, t_start, t_end, n_background) -> dict:
         "beta": _beta(n, n_background, (t_end - t_start) / CFG.BACKGROUND_DAYS)}
 
 
-def build_sequences(declustered, full=None) -> pd.DataFrame:
+def build_sequences(declustered, full=None, require_smaller=None) -> pd.DataFrame:
     """One feature row per mainshock.
 
     `declustered` supplies the mainshock targets.  The observation windows are
     read from `full` (the pre-declustering catalogue) when given, because
     Maeda's method strips small dependent events and those are exactly the
     precursory activity the features are meant to measure.
+
+    `require_smaller` overrides `CFG.REQUIRE_FORESHOCKS_SMALLER`.  Passing
+    False rebuilds the rows the rule rejects, which is what the diagnostic
+    table and figure report on.
     """
+    if require_smaller is None:
+        require_smaller = CFG.REQUIRE_FORESHOCKS_SMALLER
     source = (full if full is not None else declustered)
     source = source.sort_values("datetime", kind="mergesort").reset_index(drop=True)
     origin = source["datetime"].iloc[0]
@@ -1488,7 +1503,8 @@ def build_sequences(declustered, full=None) -> pd.DataFrame:
     main_t = to_days(mains["datetime"])
 
     records = []
-    skipped = {"too few foreshocks": 0, "outside catalogue start": 0}
+    skipped = {"too few foreshocks": 0, "outside catalogue start": 0,
+               "window holds a larger earthquake": 0}
     for k in range(len(mains)):
         t_end = main_t[k]
         t_start = t_end - CFG.T_OBS_DAYS
@@ -1501,6 +1517,10 @@ def build_sequences(declustered, full=None) -> pd.DataFrame:
         if idx.size:
             idx = idx[haversine_km(mains["Latitude"][k], mains["Longitude"][k],
                                    src_lat[idx], src_lon[idx]) <= CFG.RADIUS_KM]
+        if (require_smaller and idx.size
+                and src_mag[idx].max() > mains["Magnitude"][k] + 1e-9):
+            skipped["window holds a larger earthquake"] += 1
+            continue
         if idx.size < CFG.MIN_FORESHOCKS:
             skipped["too few foreshocks"] += 1
             continue
@@ -3715,7 +3735,11 @@ def _sequence_profile(sequences, skipped) -> pd.DataFrame:
          f"{skipped.get('outside catalogue start', 0):,}"),
         (f"Rejected: fewer than {CFG.MIN_FORESHOCKS} events in the observation window",
          f"{skipped.get('too few foreshocks', 0):,}"),
+        ("Rejected: window holds an earthquake larger than the mainshock",
+         f"{skipped.get('window holds a larger earthquake', 0):,}"),
         ("Forecast sequences retained", f"{len(sequences):,}"),
+        ("Largest foreshock relative to the mainshock",
+         f"never larger; median {(sequences['Target'] - sequences['Mag_max']).median():.2f} below"),
         ("Observation window",
          f"{CFG.T_OBS_DAYS:.0f} days, {CFG.RADIUS_KM:.0f} km radius"),
         ("Period covered",
@@ -4037,6 +4061,10 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                      font_size=Pt(9))
 
     sequences = build_sequences(independent, full=catalogue)
+    # The same construction without the mainshock-is-largest rule. Nothing is
+    # fitted on it; it exists so the diagnostic can show what the rule removes.
+    sequences_unruled = build_sequences(independent, full=catalogue,
+                                        require_smaller=False)
     if sequences.empty:
         raise SystemExit("No mainshock sequences met the observation-window criteria.")
     sequences.to_csv(CFG.TABLE_DIR / "feature_matrix.csv", index=False)
@@ -4045,12 +4073,15 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
 
     report.table(_sequence_profile(sequences, sequences.attrs.get("skipped", {})),
                  "Construction of the Forecast Sequence Data Set",
-                 f"A mainshock qualifies at M ≥ {CFG.MAINSHOCK_MIN_MAG:.1f} and requires "
+                 f"A mainshock qualifies at M ≥ {CFG.MAINSHOCK_MIN_MAG:.1f}, requires "
                  f"at least {CFG.MIN_FORESHOCKS} catalogued events inside its observation "
-                 "window. Observation windows are drawn from the full catalogue rather "
-                 "than the declustered one, because the small dependent events Maeda's "
-                 "method removes are precisely the precursory activity the features are "
-                 "meant to measure.",
+                 "window, and must be the largest earthquake in that window, which is the "
+                 "definition of a mainshock. Observation windows are drawn from the full "
+                 "catalogue rather than the declustered one, because the small dependent "
+                 "events Maeda's method removes are precisely the precursory activity the "
+                 "features are meant to measure. The forecast is therefore conditional: "
+                 "given that a mainshock follows this sequence, how large is it. Whether "
+                 "one follows at all is the separate question Section F answers.",
                  slug="t29_sequence_profile", align={"Quantity": LEFT, "Value": LEFT})
     report.table(feature_descriptives(sequences),
                  f"Descriptive Statistics for the {len(FEATURE_NAMES)} Engineered Features",
@@ -4086,14 +4117,15 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  strip_zero_columns=("Pearson r", "Spearman ρ"), int_columns=("n",),
                  align={"Feature": LEFT, "Strength": LEFT})
 
-    report.table(foreshock_gap_table(sequences),
-                 "Relationship Between the Mainshock and the Largest Event Preceding It",
-                 "The observation window holds every catalogued event within "
-                 f"{CFG.RADIUS_KM:.0f} km in the preceding {CFG.T_OBS_DAYS:.0f} days, "
-                 "including the decaying sequence of an earlier and often larger "
-                 "earthquake. The mainshock is therefore not bounded below by the largest "
-                 "event in its own window, and most of the time it does not reach it. A "
-                 "model constrained to forecast upward would contradict the record.",
+    report.table(foreshock_gap_table(sequences_unruled),
+                 "Why the Mainshock-Is-Largest Rule Is Needed",
+                 "Counted before the rule is applied. A mainshock is by definition the "
+                 "largest earthquake of its sequence, but the observation radius of "
+                 f"{CFG.RADIUS_KM:.0f} km is far wider than Maeda's spatial window L, "
+                 "which is 5 km at M 5.0 and 16 km at M 6.0. Without the rule the window "
+                 "sweeps in larger earthquakes that declustering had already assigned to "
+                 "a different cluster, and the target ends up smaller than its own "
+                 "foreshocks. These rows are excluded from every result in this report.",
                  slug="t31b_foreshock_gap",
                  align={"Quantity": LEFT, "Value": LEFT})
 
@@ -4312,13 +4344,13 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
     report.table(magnitude_floor_check(y_test, predictions,
                                        sequences["Mag_max"].to_numpy(float)[idx_test],
                                        top_models[:4]),
-                 "Cost of Requiring the Forecast to Exceed the Largest Foreshock",
-                 "Each forecast below the largest event in its own window is replaced by "
-                 "that event's magnitude and the partition is re-scored. The constraint "
-                 "raises about half of all forecasts and makes every model substantially "
-                 "worse, because the observed mainshock was itself below that level in "
-                 "most of those sequences. The final row applies the intuition on its own, "
-                 "with no model at all.",
+                 "Check That the Forecasts Respect the Largest Foreshock",
+                 "Every forecast below the largest event in its own window is replaced by "
+                 "that event's magnitude and the partition is re-scored. With the "
+                 "mainshock-is-largest rule in force the correction barely moves any "
+                 "model, which is the test that the forecasts are already consistent with "
+                 "the definition rather than merely assumed to be. The final row forecasts "
+                 "the largest foreshock itself, with no model at all.",
                  slug="t41b_magnitude_floor", decimals=3,
                  align={"Model": LEFT})
 
@@ -4472,13 +4504,14 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                                        for m in top_models[:3]}),
                       "Forecast Versus Observed Mainshock Magnitude for the Three Leading "
                       "Models", "The dashed line is perfect agreement.", width_in=6.4)
-        report.figure(fig_foreshock_gap(sequences),
-                      "Observed Mainshock Magnitude Against the Largest Event in Its "
-                      "Observation Window",
-                      "Panel (a) plots the two magnitudes against each other; the dashed "
-                      "line is equality and the shaded half is where the mainshock is the "
-                      "smaller of the two. Panel (b) is the distribution of the "
-                      "difference.", width_in=6.4)
+        report.figure(fig_foreshock_gap(sequences_unruled),
+                      "Sequences Rejected by the Mainshock-Is-Largest Rule",
+                      "Built without the rule, to show what it removes. Panel (a) plots "
+                      "the two magnitudes against each other; the dashed line is equality "
+                      "and every point in the shaded half is a window that held an "
+                      "earthquake larger than the mainshock it was supposed to precede. "
+                      "Panel (b) is the distribution of the difference. The analysis "
+                      "retains only the points on or above the line.", width_in=6.4)
         report.figure(fig_residuals({m: {"y_true": y_test, "y_pred": predictions[m]}
                                      for m in top_models[:3]}),
                       "Residuals Against Forecast Magnitude", None, width_in=5.0)

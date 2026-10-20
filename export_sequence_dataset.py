@@ -75,7 +75,8 @@ def main() -> None:
         ("Mainshock definition",
          f"An independent event of M {ea.CFG.MAINSHOCK_MIN_MAG:.1f} or above, "
          "independence decided by Maeda declustering, with at least "
-         f"{ea.CFG.MIN_FORESHOCKS} catalogued events inside the window."),
+         f"{ea.CFG.MIN_FORESHOCKS} catalogued events inside the window, and "
+         "larger than every one of them."),
         ("How to use it",
          "Type one sequence's foreshock rows into the forecaster in the order "
          "the columns appear, then compare the forecast against Recorded "
@@ -83,12 +84,11 @@ def main() -> None:
         ("Partition",
          "Training and Validation rows were seen while fitting. Only Test rows "
          "are held out, so those are the fair check of forecast accuracy."),
-        ("Foreshocks are not always smaller",
-         "The window counts every catalogued event inside the radius, "
-         "aftershocks of an earlier larger earthquake included. In "
-         f"{100 * (sequences['Target'] < sequences['Mag_max']).mean():.0f}% of "
-         "sequences the mainshock is smaller than the largest event in its own "
-         "window, so a forecast below the largest foreshock is expected."),
+        ("No foreshock exceeds its mainshock",
+         "Checked on every row of the Foreshocks sheet. Windows that held an "
+         "earthquake larger than the mainshock were sequences belonging to a "
+         "different cluster, swept in because the observation radius is wider "
+         "than Maeda's spatial window; they are excluded."),
         ("Sequences", f"{len(mains):,}"),
         ("Foreshock records", f"{len(fores):,}"),
         ("Source", "PHIVOLCS catalogue, Earthquake Data Sets NEW.xlsx"),
