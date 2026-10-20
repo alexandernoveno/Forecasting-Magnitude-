@@ -379,15 +379,25 @@
     return tree.v[node];
   }
 
+  /* scikit-learn casts the feature matrix to float32 before a tree is walked,
+     so a value sitting within a float32 ulp of a split threshold takes the
+     other branch here unless the same cast is applied. It moved the Random
+     Forest by up to 0.003 magnitude units, which is small but is the model
+     disagreeing with the paper. The linear and recurrent models are fitted in
+     float64 and must not be cast. */
+  function toFloat32(x) { return x.map(Math.fround); }
+
   function predictFeatures(model, x) {
     var i, acc = 0;
     if (model.kind === "forest") {
-      for (i = 0; i < model.trees.length; i++) { acc += runTree(model.trees[i], x); }
+      var xf = toFloat32(x);
+      for (i = 0; i < model.trees.length; i++) { acc += runTree(model.trees[i], xf); }
       return acc / model.trees.length;
     }
     if (model.kind === "boosted") {
+      var xb = toFloat32(x);
       acc = model.init;
-      for (i = 0; i < model.trees.length; i++) { acc += model.lr * runTree(model.trees[i], x); }
+      for (i = 0; i < model.trees.length; i++) { acc += model.lr * runTree(model.trees[i], xb); }
       return acc;
     }
     if (model.kind === "linear") {

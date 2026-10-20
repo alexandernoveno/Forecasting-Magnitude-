@@ -39,7 +39,11 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "model_bundle.json"
 CATALOGUE_OUT = ROOT / "catalogue.json"
 VECTORS_OUT = ROOT / "verification_vectors.json"   # development asset, not shipped
-THRESH_ROUND = 9   # split thresholds: a flipped split is a visible error
+SIGFIG = 17        # exact float64 round-trip, for anything whose scale is not
+                   # known in advance: split thresholds, stored feature values,
+                   # winsor bounds. See tree_to_dict for why decimal places are
+                   # the wrong unit, and why 12 significant figures was still
+                   # enough to flip a split in a depth-8 forest.
 VALUE_ROUND = 6    # leaf values: averaged over hundreds of trees
 WEIGHT_ROUND = 9   # linear and LSTM weights
 
@@ -51,14 +55,26 @@ def load_analysis():
     return module
 
 
+def sig(value, digits=None):
+    """Round to significant figures, which is scale independent."""
+    return float(f"%.{digits or SIGFIG}g" % float(value))
+
+
 def tree_to_dict(tree):
-    """Flat arrays beat nested objects here: same information, a third the bytes."""
+    """Flat arrays beat nested objects here: same information, a third the bytes.
+
+    Thresholds are kept to significant figures, not decimal places. Rounding
+    x7_mlk to 9 decimals collapsed its splits onto 0.0, and because that
+    feature really does range from 1e-27 to 0.18 the browser then met an exact
+    tie at `x <= t` and took the other branch from the one scikit-learn took.
+    Leaf values are magnitudes, so decimals are the right unit for those.
+    """
     t = tree.tree_
     return {
         "l": t.children_left.astype(int).tolist(),
         "r": t.children_right.astype(int).tolist(),
         "f": t.feature.astype(int).tolist(),
-        "t": np.round(t.threshold, THRESH_ROUND).tolist(),
+        "t": [sig(v) for v in t.threshold],
         "v": np.round(t.value.reshape(-1), VALUE_ROUND).tolist(),
     }
 
@@ -208,7 +224,11 @@ def main() -> None:
                                       / 86400.0), 8),
             "epicentre": [round(float(row["MainshockLat"]), 4),
                           round(float(row["MainshockLon"]), 4)],
-            "features": [round(float(row[f]), 6) if np.isfinite(row[f]) else None
+            # Significant figures, not decimal places: x7_mlk runs from 1e-27
+            # to 0.18, so six decimals would flatten most of it to zero and the
+            # replay would be fed different numbers from the ones scikit-learn
+            # scored.
+            "features": [sig(row[f]) if np.isfinite(row[f]) else None
                          for f in ea.FEATURE_NAMES],
             "expect": {key: round(float(preds[key][list(idx_test).index(k)]), 6)
                        for key in preds},
@@ -233,9 +253,12 @@ def main() -> None:
         "seed": ea.CFG.SEED,
         "features": ea.FEATURE_NAMES,
         "log_features": list(ea.LOG_FEATURES),
-        "median": [round(float(medians[f]), 6) for f in ea.FEATURE_NAMES],
-        "winsor_lo": [round(float(lo[f]), 6) for f in ea.FEATURE_NAMES],
-        "winsor_hi": [round(float(hi[f]), 6) for f in ea.FEATURE_NAMES],
+        # Significant figures again: a winsor bound rounded to six decimals
+        # clamps a feature to a slightly different number from the one the
+        # model was fitted against, which can flip a split.
+        "median": [sig(medians[f]) for f in ea.FEATURE_NAMES],
+        "winsor_lo": [sig(lo[f]) for f in ea.FEATURE_NAMES],
+        "winsor_hi": [sig(hi[f]) for f in ea.FEATURE_NAMES],
         "window_days": ea.CFG.T_OBS_DAYS,
         "radius_km": ea.CFG.RADIUS_KM,
         "min_foreshocks": ea.CFG.MIN_FORESHOCKS,

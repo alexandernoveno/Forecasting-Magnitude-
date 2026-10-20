@@ -36,7 +36,7 @@ const FEAT_TOL = 1e-6;
  * The bound is set just above the measured worst case: loose enough to accept
  * threshold straddling, tight enough that a real traversal bug, which would be
  * off by tenths, still fails. */
-const PRED_TOL = { random_forest: 1.5e-2, extra_trees: 1e-5, elastic_net: 1e-5, lstm: 1e-5 };
+const PRED_TOL = { random_forest: 1e-5, extra_trees: 1e-5, elastic_net: 1e-5, lstm: 1e-5 };
 
 let featFail = 0, predFail = 0, checked = 0;
 const worst = { feature: { name: null, diff: 0 }, model: { name: null, diff: 0 } };

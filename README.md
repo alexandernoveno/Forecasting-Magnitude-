@@ -28,6 +28,8 @@ will occur, or when, or where.
 | `app.js` | Hero drum chart and the forecast panel behaviour |
 | `export_model_bundle.py` | Exports the trained models to JSON for the browser |
 | `verify_bundle.cjs` | Checks the browser reimplementation against Python |
+| `verify_forecasts.py` | Independent check of the data set and the forecasts, for reviewers |
+| `export_sequence_dataset.py` | Writes every mainshock with its foreshocks to a workbook |
 | `outputs/` | Generated tables, figures and the Word document |
 | `Earthquake Data Sets NEW.xlsx` | The source catalogue with mapped fault distances |
 
@@ -213,6 +215,20 @@ runs the trained models in the browser.
 
 ```bash
 python export_model_bundle.py    # rebuild the models the page runs
+
+Reviewers who only want to check the result can run this instead. It needs
+numpy, pandas and openpyxl, trains nothing, and exits non-zero if any claim
+fails:
+
+```bash
+python3 verify_forecasts.py
+```
+
+It confirms that no foreshock in the data set is larger than the mainshock it
+precedes, that the models shipped to the browser reproduce the paper's
+predictions from the exported weights, and that the held-out forecasts score
+what the paper reports. `export_sequence_dataset.py` writes the workbook it
+reads.
 node verify_bundle.cjs           # confirm the browser matches Python
 ```
 
