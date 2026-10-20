@@ -151,12 +151,23 @@ def check_dataset():
           int(joined["Recorded mainshock magnitude"].isna().sum()) == 0,
           f"{int(joined['Recorded mainshock magnitude'].isna().sum())} orphans")
 
-    over = joined["Magnitude"] > joined["Recorded mainshock magnitude"] + 1e-9
-    check("no foreshock exceeds its mainshock", not bool(over.any()),
-          f"{int(over.sum())} violations in {len(joined):,} foreshock records")
-    equal = (joined["Magnitude"] - joined["Recorded mainshock magnitude"]).abs() <= 1e-9
-    print(f"         {int(equal.sum())} foreshocks equal their mainshock, which the "
-          f"definition allows; {len(joined) - int(equal.sum()):,} are strictly smaller")
+    gap = joined["Recorded mainshock magnitude"] - joined["Magnitude"]
+    check("every foreshock is strictly smaller than its mainshock",
+          bool((gap > 1e-9).all()),
+          f"{int((gap <= 1e-9).sum())} violations in {len(joined):,} foreshock records")
+    check("no foreshock is the mainshock's own record",
+          bool((joined["Days before mainshock"] > 0).all()),
+          f"{int((joined['Days before mainshock'] <= 0).sum())} events sit at the "
+          "forecast moment itself")
+    # Not a failure, but worth printing: the catalogue collapses duplicate
+    # origins only within 1 s and 1 km, so a relocated second report of the
+    # same earthquake survives as its own record.
+    close = joined["Days before mainshock"] * 86400 < 5
+    if close.any():
+        print(f"         note: {int(close.sum())} foreshocks sit within 5 seconds of "
+              "their mainshock and may be second reports of the same earthquake")
+    print(f"         smallest gap between a foreshock and its mainshock: "
+          f"{gap.min():.1f} magnitude units")
 
     counted = fores.groupby("Sequence ID").size()
     declared = mains.set_index("Sequence ID")["Foreshocks in window"]

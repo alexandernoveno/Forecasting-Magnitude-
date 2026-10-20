@@ -1,14 +1,14 @@
 Quantity,Value
 "Candidate mainshocks (independent, M ≥ 5.0)","3,261"
 Rejected: window opens before the catalogue starts,1
-Rejected: fewer than 3 events in the observation window,"2,528"
-Rejected: window holds an earthquake larger than the mainshock,533
-Forecast sequences retained,199
-Largest foreshock relative to the mainshock,never larger; median 0.40 below
+Rejected: fewer than 3 events in the observation window,"2,470"
+Rejected: window holds an earthquake as large as the mainshock,624
+Forecast sequences retained,166
+Largest foreshock relative to the mainshock,"always smaller, by at least 0.1 and a median of 0.50"
 Observation window,"14 days, 100 km radius"
-Period covered,Jul 1968 – Jan 2026
-"Target magnitude, M (SD)",5.559 (0.527)
+Period covered,Aug 1968 – Jan 2026
+"Target magnitude, M (SD)",5.586 (0.528)
 Target magnitude range,5.0 – 7.3
 Median foreshocks per window,4
-Sequences with an M ≥ 6.0 target,39
-Sequences with an M ≥ 7.0 target,7
+Sequences with an M ≥ 6.0 target,35
+Sequences with an M ≥ 7.0 target,5

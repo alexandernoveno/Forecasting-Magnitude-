@@ -30,6 +30,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import ExtraTreesRegressor, RandomForestRegressor
 from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
@@ -79,6 +80,24 @@ def tree_to_dict(tree):
     }
 
 
+def best_rf_params(ea) -> dict:
+    """The Random Forest the analysis actually chose.
+
+    These were hardcoded here, and the hyperparameter grid moved underneath
+    them when the data set changed, so the page was serving a forest the paper
+    never fitted. Read the grid's own winner instead.
+    """
+    grid = pd.read_csv(ea.CFG.TABLE_DIR / "t34_rf_grid.csv").iloc[0]
+    depth = grid["max_depth"]
+    features = grid["max_features"]
+    return {
+        "n_estimators": int(grid["n_estimators"]),
+        "max_depth": None if pd.isna(depth) else int(float(depth)),
+        "min_samples_leaf": int(grid["min_samples_leaf"]),
+        "max_features": features if isinstance(features, str) else float(features),
+    }
+
+
 def main() -> None:
     ea = load_analysis()
     print("Rebuilding the analysis ...")
@@ -105,7 +124,7 @@ def main() -> None:
     hi = train_tab.quantile(ea.WINSOR_QUANTILES[1])
 
     # --- Tabular models ------------------------------------------------------ #
-    rf_params = dict(n_estimators=300, max_depth=8, min_samples_leaf=1, max_features=0.5)
+    rf_params = best_rf_params(ea)
     rf = RandomForestRegressor(random_state=ea.CFG.SEED, n_jobs=-1, **rf_params).fit(X, y)
     # Must match the Extra Trees entry in tabular_estimators exactly, or the
     # page would report a score the analysis never produced.
@@ -471,8 +490,17 @@ def window_events(cat_sorted, row, ea) -> list:
     origin = cat_sorted["datetime"].iloc[0]
     t_days = (cat_sorted["datetime"] - origin).dt.total_seconds().to_numpy() / 86400.0
     t_end = (row["MainshockTime"] - origin).total_seconds() / 86400.0
-    lo = np.searchsorted(t_days, t_end - ea.CFG.T_OBS_DAYS, side="left")
-    hi = np.searchsorted(t_days, t_end, side="left")
+    # Bracket the window on the timestamps themselves. Converting to days first
+    # cost a float ulp, because Timedelta.total_seconds() on a scalar and
+    # .dt.total_seconds() on a column do not always land on the same float, and
+    # one ulp was enough for searchsorted to keep the mainshock's own record as
+    # the first event of its own window. It did that in 12 of 199 sequences,
+    # every one of them reported as a foreshock equal in size to its mainshock.
+    stamps = cat_sorted["datetime"].to_numpy()
+    end = np.datetime64(row["MainshockTime"])
+    start = end - np.timedelta64(int(ea.CFG.T_OBS_DAYS * 86400 * 1000), "ms")
+    lo = int(np.searchsorted(stamps, start, side="left"))
+    hi = int(np.searchsorted(stamps, end, side="left"))
     idx = np.arange(lo, hi)
     if idx.size:
         near = ea.haversine_km(row["MainshockLat"], row["MainshockLon"],

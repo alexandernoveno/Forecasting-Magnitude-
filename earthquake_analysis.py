@@ -158,8 +158,9 @@ class CFG:
     RADIUS_KM = 100.0                 # spatial radius of the observation window
     MIN_FORESHOCKS = 3                # sparser windows cannot support a b-value
     BACKGROUND_DAYS = 365.0           # reference interval for the beta statistic
-    # A mainshock is the largest earthquake of its sequence; an event that
-    # surpasses everything before it is the mainshock by definition. The
+    # A mainshock is the largest earthquake of its sequence, strictly: if a
+    # preceding event ties it, which of the two is the mainshock is undecidable
+    # and the pair should not be scored as a foreshock sequence at all. The
     # observation radius is far wider than Maeda's spatial window L, which is
     # 5 km at M 5.0 and 16 km at M 6.0, so without this rule the window sweeps
     # in larger earthquakes that declustering had correctly assigned to a
@@ -1504,7 +1505,7 @@ def build_sequences(declustered, full=None, require_smaller=None) -> pd.DataFram
 
     records = []
     skipped = {"too few foreshocks": 0, "outside catalogue start": 0,
-               "window holds a larger earthquake": 0}
+               "window holds an equal or larger earthquake": 0}
     for k in range(len(mains)):
         t_end = main_t[k]
         t_start = t_end - CFG.T_OBS_DAYS
@@ -1518,8 +1519,8 @@ def build_sequences(declustered, full=None, require_smaller=None) -> pd.DataFram
             idx = idx[haversine_km(mains["Latitude"][k], mains["Longitude"][k],
                                    src_lat[idx], src_lon[idx]) <= CFG.RADIUS_KM]
         if (require_smaller and idx.size
-                and src_mag[idx].max() > mains["Magnitude"][k] + 1e-9):
-            skipped["window holds a larger earthquake"] += 1
+                and src_mag[idx].max() >= mains["Magnitude"][k] - 1e-9):
+            skipped["window holds an equal or larger earthquake"] += 1
             continue
         if idx.size < CFG.MIN_FORESHOCKS:
             skipped["too few foreshocks"] += 1
@@ -3735,11 +3736,13 @@ def _sequence_profile(sequences, skipped) -> pd.DataFrame:
          f"{skipped.get('outside catalogue start', 0):,}"),
         (f"Rejected: fewer than {CFG.MIN_FORESHOCKS} events in the observation window",
          f"{skipped.get('too few foreshocks', 0):,}"),
-        ("Rejected: window holds an earthquake larger than the mainshock",
-         f"{skipped.get('window holds a larger earthquake', 0):,}"),
+        ("Rejected: window holds an earthquake as large as the mainshock",
+         f"{skipped.get('window holds an equal or larger earthquake', 0):,}"),
         ("Forecast sequences retained", f"{len(sequences):,}"),
         ("Largest foreshock relative to the mainshock",
-         f"never larger; median {(sequences['Target'] - sequences['Mag_max']).median():.2f} below"),
+         f"always smaller, by at least "
+         f"{(sequences['Target'] - sequences['Mag_max']).min():.1f} and a median of "
+         f"{(sequences['Target'] - sequences['Mag_max']).median():.2f}"),
         ("Observation window",
          f"{CFG.T_OBS_DAYS:.0f} days, {CFG.RADIUS_KM:.0f} km radius"),
         ("Period covered",

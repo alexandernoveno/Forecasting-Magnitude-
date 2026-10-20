@@ -2,8 +2,8 @@ Setting,LSTM,GRU,1D-CNN
 Deep-learning backend in use,numpy,numpy,numpy
 Architecture,32 units,32 units,"24 filters, kernel 3"
 Trainable parameters,"4,897","3,681",409
-Epochs run (of 300 max),49,87,55
-Best validation MSE,0.4791,0.5434,0.9133
+Epochs run (of 300 max),51,53,60
+Best validation MSE,0.3381,0.3459,0.7079
 Optimiser,Adam (lr = 0.01),Adam (lr = 0.01),Adam (lr = 0.01)
 Early stopping,patience 40,patience 40,patience 40
 Input,10 × 5 event stream,10 × 5 event stream,10 × 5 event stream

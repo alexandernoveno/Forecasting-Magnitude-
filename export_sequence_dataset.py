@@ -56,7 +56,10 @@ def main() -> None:
             fores.append({
                 "Sequence ID": sid,
                 "Foreshock no.": k,
-                "Days before mainshock": round(e["before"], 4),
+                # Six decimals is a tenth of a second. Four rounded the
+                # closest foreshocks to a flat 0.0, which reads as the
+                # mainshock's own record rather than an event just before it.
+                "Days before mainshock": round(e["before"], 6),
                 "Magnitude": e["mag"],
                 "Latitude N": e["lat"],
                 "Longitude E": e["lon"],

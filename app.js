@@ -592,10 +592,10 @@
         gap.className = "caution";
         gap.innerHTML = "<strong>This forecast is below the largest foreshock, which means the model under-forecast.</strong> "
           + "A mainshock is the largest earthquake of its sequence, so M "
-          + largest.toFixed(1) + " is the floor this sequence sets. Every one of the 199 "
-          + "recorded sequences obeys that rule, and Extra Trees respects it on all 40 "
-          + "held-out cases. Treat M " + largest.toFixed(1) + " as the lower bound here, "
-          + "or switch to Extra Trees.";
+          + largest.toFixed(1) + " is the floor this sequence sets. All 166 recorded "
+          + "sequences obey that rule, every foreshock strictly smaller than the "
+          + "mainshock it precedes. Treat M " + largest.toFixed(1) + " as the lower "
+          + "bound here, or switch to Extra Trees.";
         frag.appendChild(gap);
       }
 

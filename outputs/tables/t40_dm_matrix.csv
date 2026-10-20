@@ -1,6 +1,6 @@
-Model,Extra Trees,Random Forest,k-Nearest Neighbours,Support Vector Regression,Elastic Net
-Extra Trees,—,.439,.225,.099,.158
-Random Forest,.439,—,.383,.191,.211
-k-Nearest Neighbours,.225,.383,—,.540,.959
-Support Vector Regression,.099,.191,.540,—,.617
-Elastic Net,.158,.211,.959,.617,—
+Model,Extra Trees,Random Forest,Support Vector Regression,k-Nearest Neighbours,Climatology (training mean)
+Extra Trees,—,.524,.621,.366,.130
+Random Forest,.524,—,.755,.506,.155
+Support Vector Regression,.621,.755,—,.913,.507
+k-Nearest Neighbours,.366,.506,.913,—,.203
+Climatology (training mean),.130,.155,.507,.203,—

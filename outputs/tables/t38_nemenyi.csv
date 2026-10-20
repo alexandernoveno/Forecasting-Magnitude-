@@ -1,17 +1,17 @@
 Model,Mean rank,Rank difference from best,Distinguishable from best
-Extra Trees,2.6,0.0,No
-Elastic Net,4.8,2.1999999999999997,No
-Random Forest,5.0,2.4,No
-Ridge Regression,5.4,2.8000000000000003,No
-Gradient Boosting,5.8,3.1999999999999997,No
-Support Vector Regression,6.0,3.4,No
-ARIMAX,6.4,3.8000000000000003,No
-Histogram GB,7.7,5.1,No
-k-Nearest Neighbours,8.6,6.0,No
-LSTM,9.4,6.800000000000001,No
-Climatology (training mean),9.9,7.300000000000001,No
-GRU,11.0,8.4,No
-Multilayer Perceptron,12.4,9.8,No
-ARIMA,12.6,10.0,No
-Persistence (previous mainshock),13.0,10.4,No
-1D-CNN,15.4,12.8,No
+Extra Trees,3.2,0.0,No
+Random Forest,3.6,0.3999999999999999,No
+Elastic Net,4.0,0.7999999999999998,No
+Gradient Boosting,5.4,2.2,No
+Support Vector Regression,5.6,2.3999999999999995,No
+k-Nearest Neighbours,6.2,3.0,No
+Ridge Regression,6.2,3.0,No
+Histogram GB,7.5,4.3,No
+ARIMAX,8.0,4.8,No
+Climatology (training mean),9.3,6.1000000000000005,No
+LSTM,11.0,7.8,No
+Multilayer Perceptron,11.8,8.600000000000001,No
+ARIMA,12.6,9.399999999999999,No
+GRU,13.0,9.8,No
+Persistence (previous mainshock),13.2,10.0,No
+1D-CNN,15.4,12.2,No

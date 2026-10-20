@@ -1,10 +1,10 @@
 Quantity,Value
-True positives (forecast and observed M ≥ 6.0),2.0
-False positives (false alarms),0.0
+True positives (forecast and observed M ≥ 6.0),0.0
+False positives (false alarms),2.0
 False negatives (missed events),8.0
-True negatives,30.0
-Probability of detection (POD / recall),0.2
-False-alarm ratio (FAR),0.0
-Probability of false detection (POFD),0.0
-Critical success index (CSI),0.2
-Hanssen–Kuipers skill score (POD − POFD),0.2
+True negatives,23.0
+Probability of detection (POD / recall),0.0
+False-alarm ratio (FAR),1.0
+Probability of false detection (POFD),0.08
+Critical success index (CSI),0.0
+Hanssen–Kuipers skill score (POD − POFD),-0.08
