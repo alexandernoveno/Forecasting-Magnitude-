@@ -731,6 +731,12 @@ tbody tr.is-top td:first-child { color: var(--accent); font-weight: 600; }
 
 /* ===== Forecast lab ======================================================== */
 .lab { display: grid; grid-template-columns: 1fr; gap: clamp(22px, 3vw, 34px); align-items: start; margin-top: 46px; }
+/* A grid item's default min-width is its content's min-content size, so the
+   event table and the probability table, both of which set a min-width and
+   scroll inside their own wrapper, were pushing the whole page sideways
+   instead. */
+.lab > * { min-width: 0; }
+.lab .box > div[style*="overflow-x"] { max-width: 100%; }
 @media (min-width: 1000px) { .lab { grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); } }
 .box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: clamp(22px, 2.6vw, 30px); box-shadow: var(--sh-sm); }
 .box + .box { margin-top: 18px; }
@@ -767,7 +773,13 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 .seg label:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .seg .rmse { font-family: var(--f-mono); font-size: .78em; opacity: .75; margin-left: 5px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 480px) { .grid3 { grid-template-columns: 1fr; } }
+/* A datetime-local control carries an intrinsic minimum width that no amount
+   of minmax(0, 1fr) will shrink, so the three-up row has to break earlier than
+   the other grids or it pushes the whole page sideways. */
+@media (max-width: 760px) { .grid3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .grid3 > .field:last-child { grid-column: 1 / -1; } }
+@media (max-width: 420px) { .grid3 { grid-template-columns: 1fr; } }
+.grid3 input { min-width: 0; }
 
 .events { width: 100%; min-width: 0; border-collapse: collapse; font-size: .84rem; }
 .events th {
@@ -792,6 +804,28 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 .events input { width: 100%; min-width: 0; }
 .events input[type="datetime-local"] { font-family: var(--f-mono); font-size: .74rem; padding-left: 6px; padding-right: 4px; }
 .events input[type="number"] { font-family: var(--f-mono); font-size: .78rem; }
+/* Narrow panes get a table that fits rather than one that scrolls sideways
+   inside its own wrapper. A horizontally scrolling form with no visible
+   affordance loses the columns on the right, and the right-hand columns here
+   are the coordinates. */
+@media (max-width: 620px) {
+  .events { min-width: 0; }
+  .events th, .events td { padding-right: 3px; }
+  .events th:first-child, .events td:first-child { width: 42%; }
+  .events th:nth-child(2), .events td:nth-child(2) { width: 13%; }
+  .events th:nth-child(3), .events td:nth-child(3),
+  .events th:nth-child(4), .events td:nth-child(4) { width: 16%; }
+  .events th:nth-child(5), .events td:nth-child(5) { width: 13%; }
+  .events input { padding: 7px 4px; }
+  /* The minutes are the part that matters and the part a clipped field drops,
+     so the date column gets the width and the smallest type. */
+  .events input[type="datetime-local"] { font-size: .62rem; padding-left: 3px; padding-right: 0; }
+  .events input[type="number"] { font-size: .72rem; }
+  /* "MAGNITUDE" is one unbreakable word in a 13% column, so the header row
+     takes the smallest legible size rather than running into its neighbour.
+     Every input carries its own aria-label, so a screen reader is unaffected. */
+  .events th { font-size: .5rem; letter-spacing: .02em; padding-right: 2px; overflow: hidden; }
+}
 .events input.is-bad {
   border-color: var(--accent);
   background: var(--accent-soft);
