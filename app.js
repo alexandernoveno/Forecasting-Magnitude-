@@ -1518,7 +1518,8 @@
   (function () {
     var targets = ["evidenceCleaning", "evidenceWindows", "evidenceScales",
                    "evidenceFeatures", "evidenceMetrics", "evidenceBands",
-                   "evidenceSupport", "evidenceCase"];
+                   "evidenceSupport", "evidenceCase", "evidenceAblation",
+                   "evidenceEtas"];
     if (!targets.some(function (id) { return document.getElementById(id); })) { return; }
 
     function el(id) { return document.getElementById(id); }
@@ -1624,6 +1625,34 @@
           + '</td><td style="text-align:right">' + sup.val
           + '</td><td style="text-align:right">' + sup.test + "</td>";
       });
+
+      rows("evidenceAblation", ev.ablation, function (a) {
+        /* The last row is the finding in words, not a measurement, so it runs
+           the full width rather than pretending to be a number. */
+        var isFinding = a.quantity === "Finding";
+        return '<td' + (isFinding ? ' class="thin"' : '') + '>' + a.quantity
+          + '</td><td style="text-align:' + (isFinding ? "left" : "right") + '" class="'
+          + (isFinding ? "thin" : "v") + '">' + a.value + "</td>";
+      });
+
+      rows("evidenceEtas", ev.etas, function (e) {
+        var baseline = e.model.indexOf("ETAS") === 0;
+        return "<td>" + e.model + '</td><td style="text-align:right">'
+          + e.rmse.toFixed(3) + '</td><td style="text-align:right" class="'
+          + (e.skill > 0 ? "accent" : "") + '">'
+          + (baseline ? "baseline" : (e.skill > 0 ? "+" : "") + e.skill.toFixed(1) + "%")
+          + "</td>";
+      });
+      var etasBody = el("evidenceEtas");
+      if (etasBody && ev.etas) {
+        Array.prototype.forEach.call(etasBody.querySelectorAll("tr"), function (tr, i) {
+          if (ev.etas[i] && ev.etas[i].model.indexOf("ETAS") === 0) {
+            tr.className = "is-ref";
+          } else if (i === 0) {
+            tr.className = "is-top";
+          }
+        });
+      }
 
       var block = (ev.shap_cases || [])[0];
       if (block) {

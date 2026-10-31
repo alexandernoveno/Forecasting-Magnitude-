@@ -1439,8 +1439,27 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <p>An Extra Trees ensemble on 27 features cuts squared error by 11.4% against quoting the historical average magnitude. Of the sixteen forecasters compared in the paper, three beat that baseline and thirteen do not. The typical error is 0.55 of a magnitude unit, the difference between a tremor and a damaging event, and the confidence interval on the leader runs from 0.397 to 0.701 against the baseline's 0.427 to 0.742. Those intervals overlap almost completely. On 33 held-out sequences this is a weak result honestly reported, not a strong one.</p>
           <h3>The LSTM is in the objectives and behind the baseline</h3>
           <p>The recurrent network scores 0.599 against climatology's 0.589, a skill of minus 3.4%. It is shown here because the study objectives name it, and reporting only the models that worked would be the more serious failure. With 100 training sequences of ten timesteps there is nothing like enough data for a network to pay for its parameters, and that is the finding, not a bug to be tuned away.</p>
-          <h3>Fault distance no longer earns its place</h3>
-          <p>On the 22 core features alone the leading model scores 0.547, which is better than the 0.555 it scores with all 27. Fault distance now costs accuracy rather than adding it, having appeared to help on the earlier and larger sample. Dist_std still ranks third of 27 by SHAP attribution, which is a reminder that influence inside a fitted model is not the same as a gain in held-out error. The honest reading is that this data set is too small to settle whether fault distance helps.</p>
+          <h3>Fault distance: no measurable difference, either way</h3>
+          <div class="tablewrap" style="margin:18px 0 22px;">
+            <table>
+              <caption>Dropping the five fault features and refitting, under two protocols</caption>
+              <tbody id="evidenceAblation"></tbody>
+            </table>
+          </div>
+          <p>Dropping the five fault features and refitting gives 0.547 against the 0.555 scored with all 27, which looks like fault distance costing accuracy. Run the same comparison by rolling-origin cross-validation and the sign reverses: 27 features win by 0.007, and the core set wins only two folds of five. Neither result is significant (p = .95 on the test split, p = .56 across folds), neither confidence interval excludes zero, and the whole effect is 1.3% of the model's own error.</p>
+          <p>Two protocols disagreeing in sign about an effect smaller than their own noise is what a null result looks like. The defensible statement is that <strong>this data set cannot resolve whether fault distance helps</strong> — not that it helps, and not that it hurts. Dist_std ranks third of 27 by SHAP attribution, which is a reminder that influence inside a fitted model is a different quantity from a gain in held-out error. Settling it would need more sequences, not a different algorithm.</p>
+          <h3>Against the standard baseline</h3>
+          <div class="tablewrap" style="margin:18px 0 22px;">
+            <table>
+              <caption>Test partition, scored against the ETAS magnitude component</caption>
+              <thead>
+                <tr><th scope="col">Model</th><th scope="col" style="text-align:right">RMSE</th><th scope="col" style="text-align:right">Skill vs. ETAS</th></tr>
+              </thead>
+              <tbody id="evidenceEtas"></tbody>
+            </table>
+          </div>
+          <p>ETAS is the reference model for Philippine seismicity, so the comparison belongs here. ETAS forecasts the <em>rate</em> of earthquakes, not the magnitude of a particular one, and its magnitude component is the Gutenberg-Richter distribution drawn independently of history. Above M 5.0 that distribution has expectation M0 + 1/(b ln 10), a constant, with b estimated by Aki-Utsu maximum likelihood on the training targets alone. As a magnitude forecaster ETAS is therefore a constant, and it is scored as one rather than waved past: M 5.62, RMSE 0.586.</p>
+          <p>Extra Trees beats it by 10.5% skill and Random Forest by 5.9%; the LSTM trails it by 4.4%. Fitting a full ETAS space-time intensity would be the right comparison for the occurrence model rather than this one, and this study does not do it.</p>
           <h3>Whether, not just how large</h3>
           <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. A regularised logistic model over eight features beats the historical rate in all three M 5.0 cells, by 6.0%, 5.8% and 2.1% Brier skill at 50, 100 and 200 km. It finds nothing at M 6.0 and there are too few M 7.0 events to score at all, so those cells still report the observed frequency with its margin of error at 95% confidence.</p>
           <p>Each radius is a separately trained model fitted on the events inside that radius, and the panel above feeds each one a window computed at its own radius. A 50 km ring holding none of your events falls back to the historical rate and says so rather than borrowing the figure from a wider ring.</p>
@@ -1856,6 +1875,6 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   }
 })();
 </script>
-<script src="app.js?v=dcf6092ecf"></script>
+<script src="app.js?v=8265327fd9"></script>
 </body>
 </html>

@@ -550,6 +550,18 @@ def evidence_block(ea) -> dict:
              "total": int(r["Total"])}
             for _, r in support.iterrows()]
 
+    ablation = _table("t41f_fault_ablation")
+    if ablation is not None:
+        out["ablation"] = [{"quantity": r["Quantity"], "value": str(r["Value"])}
+                           for _, r in ablation.iterrows()]
+
+    etas = _table("t41g_etas")
+    if etas is not None:
+        col = next((c for c in etas.columns if c.startswith("Skill vs.")), None)
+        out["etas"] = [{"model": r["Model"], "rmse": round(float(r["RMSE"]), 4),
+                        "skill": round(float(r[col]), 1) if col else None}
+                       for _, r in etas.iterrows()]
+
     spread = _table("t41e_ensemble_spread")
     if spread is not None and not spread.empty:
         col = next((c for c in spread.columns if c.startswith("Observed at or below")),
