@@ -80,6 +80,7 @@
   --accent-press: #98301d;   /* white label clears 7.6:1 */
   --accent-soft: #fbede9;
   --good:        #2f6d4f;   /* foreshock markers, 5.6:1 on surface */
+  --fault:       #2f5d8c;   /* mapped active faults, 6.1:1 on surface */
   --on-accent:   #ffffff;
   --focus:       #b0392a;
   --shadow-color: 20 26 20;
@@ -126,6 +127,7 @@
     --accent-soft: #2a1a16;
     --on-accent:   #140f0e;
     --good:        #6fbf8f;   /* foreshock markers, 8.4:1 on the dark surface */
+    --fault:       #7fb0e0;   /* mapped active faults, 7.9:1 on the dark surface */
     --focus:       #e4735d;
     --shadow-color: 0 0 0;
     --sh-sm: 0 1px 2px rgb(0 0 0 / .4);
@@ -150,6 +152,7 @@
   --accent-soft: #2a1a16;
   --on-accent:   #140f0e;
   --good:        #6fbf8f;   /* foreshock markers, 8.4:1 on the dark surface */
+  --fault:       #7fb0e0;   /* mapped active faults, 7.9:1 on the dark surface */
   --focus:       #e4735d;
   --shadow-color: 0 0 0;
   --sh-sm: 0 1px 2px rgb(0 0 0 / .4);
@@ -728,7 +731,7 @@ tbody tr.is-top td:first-child { color: var(--accent); font-weight: 600; }
 
 /* ===== Forecast lab ======================================================== */
 .lab { display: grid; grid-template-columns: 1fr; gap: clamp(22px, 3vw, 34px); align-items: start; margin-top: 46px; }
-@media (min-width: 1000px) { .lab { grid-template-columns: minmax(0, 1.02fr) minmax(0, .98fr); } }
+@media (min-width: 1000px) { .lab { grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); } }
 .box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: clamp(22px, 2.6vw, 30px); box-shadow: var(--sh-sm); }
 .box + .box { margin-top: 18px; }
 .field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
@@ -775,6 +778,20 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 .events td { padding: 5px 5px 5px 0; }
 .events input { padding: 8px 9px; font-size: .82rem; border-radius: var(--r-xs); }
 .events td:last-child, .events th:last-child { width: 34px; padding-right: 0; }
+/* A datetime-local control is wide and will take the whole row if allowed to,
+   squeezing the four numeric columns into two characters each. */
+/* Fixed columns in absolute units, not percentages: the panel sits in a
+   narrow grid track and a percentage table clips every value at once. At this
+   width the wrapper scrolls, which is better than five unreadable columns. */
+.events { table-layout: fixed; min-width: 560px; }
+.events th:first-child, .events td:first-child { width: 168px; }
+.events th:nth-child(2), .events td:nth-child(2) { width: 86px; }
+.events th:nth-child(3), .events td:nth-child(3),
+.events th:nth-child(4), .events td:nth-child(4) { width: 92px; }
+.events th:nth-child(5), .events td:nth-child(5) { width: 84px; }
+.events input { width: 100%; min-width: 0; }
+.events input[type="datetime-local"] { font-family: var(--f-mono); font-size: .74rem; padding-left: 6px; padding-right: 4px; }
+.events input[type="number"] { font-family: var(--f-mono); font-size: .78rem; }
 .events input.is-bad {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -789,6 +806,84 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 .lab__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
 .msg { font-size: .86rem; margin-top: 14px; }
 .msg--error { color: var(--accent); }
+
+
+/* Any invalid field, not only an event-table cell: the epicentre and the
+   forecast moment are validated the same way and have to mark the same way. */
+.lab input.is-bad, .fs input.is-bad {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Loading a sequence from a file. A real <input type="file"> styled through
+   its label, so the control is still the native one for a screen reader. */
+.upload { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.upload input[type="file"] {
+  position: absolute; width: 1px; height: 1px; padding: 0;
+  margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.upload__btn {
+  display: inline-block; cursor: pointer;
+  padding: 9px 16px; border-radius: var(--r-xs);
+  border: 1px solid var(--line-2); background: transparent;
+  font-size: .84rem; color: var(--ink);
+  transition: border-color .2s var(--ease), color .2s var(--ease);
+}
+.upload__btn:hover { border-color: var(--accent); color: var(--accent); }
+.upload input[type="file"]:focus-visible + .upload__btn,
+.upload__btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.upload .help { margin-top: 12px; }
+
+/* The cleaning funnel. Bar width is on a square-root scale, matching the
+   figure, because the last stage is a hundredth of the first. */
+.funnel { margin-top: 38px; display: grid; gap: 10px; }
+.funnel__row {
+  display: grid; align-items: center; gap: 16px;
+  grid-template-columns: minmax(150px, 230px) minmax(120px, 1fr) minmax(0, 1.1fr);
+}
+.funnel__label { font-size: .88rem; line-height: 1.4; }
+/* Two tracks, not a flex row: the bar's percentage then resolves against the
+   bar track alone, and the count has a column of its own instead of
+   overflowing into the note beside it. */
+.funnel__bar {
+  display: grid; grid-template-columns: minmax(0, 1fr) 58px;
+  align-items: center; gap: 10px;
+}
+.funnel__bar i {
+  display: block; height: 26px; border-radius: 3px;
+  background: var(--line-2); min-width: 3px;
+}
+.funnel__bar b {
+  font-family: var(--f-mono); font-size: .82rem; font-weight: 500;
+  font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right;
+}
+.funnel__row.is-final .funnel__bar i { background: var(--accent); }
+.funnel__row.is-final .funnel__bar b { color: var(--accent); }
+.funnel__note { font-size: .8rem; color: var(--mute); line-height: 1.45; }
+@media (max-width: 760px) {
+  .funnel__row { grid-template-columns: 1fr; gap: 4px; }
+  .funnel__note { margin-bottom: 10px; }
+}
+
+/* Shared by the evidence tables, which borrow the probability panel's scale. */
+.tablewrap td.thin, .tablewrap th.thin { color: var(--mute); }
+.tablewrap .thin { color: var(--mute); }
+.tablewrap .moe {
+  display: block; font-family: var(--f-mono); font-size: .68rem; color: var(--mute);
+}
+.tablewrap td.accent { color: var(--accent); }
+/* Tables here default every column but the first to right-aligned numerals,
+   which is right for a leaderboard and wrong for a column of sentences. */
+.tablewrap td[data-text], .tablewrap th[data-text] { text-align: left; }
+#evidenceFeatures td:nth-child(2), #evidenceFeatures td:nth-child(3),
+#features thead th:nth-child(2), #features thead th:nth-child(3) { text-align: left; }
+#evidenceFeatures td:nth-child(2), #evidenceFeatures td:nth-child(3) {
+  font-family: var(--f-body); padding-right: 18px;
+}
+#evidenceCase td:first-child { font-family: var(--f-mono); font-weight: 400; font-size: .84rem; }
+#evidenceScales td:nth-child(2) { text-align: left; font-family: var(--f-body); }
+#evidenceMetrics td:first-child { white-space: normal; }
+.tablewrap code { font-family: var(--f-mono); font-size: .78rem; }
 
 .readout { min-height: 300px; }
 .readout__state { font-size: .94rem; color: var(--mute); }
@@ -865,12 +960,13 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
       Foreshock to Mainshock
     </a>
     <nav class="nav__links" aria-label="Primary">
-      <a href="#scope">Scope</a>
-      <a href="#record">Record</a>
-      <a href="#approach">Approach</a>
-      <a href="#results">Results</a>
       <a href="#lab">Forecaster</a>
-      <a href="#authors">Authors</a>
+      <a href="#scope">Scope</a>
+      <a href="#approach">Method</a>
+      <a href="#cleaning">Cleaning</a>
+      <a href="#features">Inputs</a>
+      <a href="#results">Results</a>
+      <a href="#limits">Limits</a>
     </nav>
     <a class="btn btn--primary btn--sm nav__cta" href="#lab">Run the model <span class="arw" aria-hidden="true">&rsaquo;</span></a>
     <button class="burger" id="burger" aria-expanded="false" aria-controls="drawer" aria-label="Open menu">
@@ -880,11 +976,14 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
 </header>
 
 <div class="drawer" id="drawer" hidden>
+  <a href="#lab">Forecaster</a>
   <a href="#scope">Scope</a>
   <a href="#record">Record</a>
-  <a href="#approach">Approach</a>
+  <a href="#approach">Method</a>
+  <a href="#cleaning">Cleaning</a>
+  <a href="#features">Inputs</a>
   <a href="#results">Results</a>
-  <a href="#lab">Forecaster</a>
+  <a href="#limits">Limits</a>
   <a href="#authors">Authors</a>
   <a class="btn btn--primary" href="#lab">Run the model <span class="arw" aria-hidden="true">&rsaquo;</span></a>
 </div>
@@ -905,7 +1004,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         </div>
         <p class="trust">
           <span>17,667 catalogued events</span>
-          <span>16 models compared</span>
+          <span>16 models compared, 3 shipped</span>
           <span>Verified against Python</span>
         </p>
       </div>
@@ -928,13 +1027,126 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         </div>
         <div class="float float--b">
           <span class="float__k">Skill over average</span>
-          <span class="float__v accent">+23.6%</span>
+          <span class="float__v accent">+11.4%</span>
         </div>
         <div class="float float--c">
           <span class="float__k">b-value</span>
           <span class="float__v">0.920</span>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ===================== Forecast lab ===================== -->
+  <section class="sec" id="lab">
+    <div class="shell">
+      <div class="sec__head rv">
+        <p class="eyebrow">Try it</p>
+        <h2>Run the model on a foreshock sequence.</h2>
+        <p class="lede">Three trained models from the paper, running in your browser on the events you give them. The panel returns how large a mainshock would be, how far the epicentre sits from the nearest mapped active fault, and separately how often one has actually followed a sequence like this within two weeks.</p>
+      </div>
+
+      <div class="howto rv-s">
+        <div class="howto__step">
+          <span class="howto__n" aria-hidden="true">1</span>
+          <h3>Set the epicentre and the moment</h3>
+          <p>Where the sequence is centred and the date and time you are forecasting from. The distance to the nearest mapped active fault appears as you type it, and the regional history the model needs is read from the catalogue at that point.</p>
+        </div>
+        <div class="howto__step">
+          <span class="howto__n" aria-hidden="true">2</span>
+          <h3>Enter the foreshocks</h3>
+          <p>One row per tremor, each with the date and time it happened. The elapsed days the model works in are computed for you. At least three complete rows inside the 14 days before are needed, and rows are reordered oldest first so the table reads the way the model does.</p>
+        </div>
+        <div class="howto__step">
+          <span class="howto__n" aria-hidden="true">3</span>
+          <h3>Pick a model and forecast</h3>
+          <p>The number beside each model is its test error in magnitude units, so lower is better. Only the three named in the study objectives are offered here; the other thirteen stay in the comparison tables below.</p>
+        </div>
+        <div class="howto__step">
+          <span class="howto__n" aria-hidden="true">4</span>
+          <h3>Read it with its limits</h3>
+          <p>A mainshock is the largest earthquake of its sequence, so expect the forecast to sit above the largest tremor you entered. Read the ensemble's 90th percentile as well as its mean: above M 7.0 the mean is about a magnitude and a half too low, and the panel says so every time.</p>
+        </div>
+      </div>
+
+      <div class="lab">
+        <div>
+          <div class="box">
+            <fieldset class="fs" style="margin-bottom:0;">
+              <legend>The sequence you are forecasting</legend>
+              <div class="grid3">
+                <div class="field">
+                  <label for="lat">Latitude N</label>
+                  <input type="number" id="lat" step="0.01" min="0" max="25" value="14.20">
+                </div>
+                <div class="field">
+                  <label for="lon">Longitude E</label>
+                  <input type="number" id="lon" step="0.01" min="110" max="140" value="121.10">
+                </div>
+                <div class="field">
+                  <label for="when">Forecasting from</label>
+                  <input type="datetime-local" id="when" value="2024-06-15T00:00">
+                </div>
+              </div>
+              <p class="help">The epicentre of the sequence and the moment you are forecasting from. Everything after this moment is unknown to the model. Times are UTC, which is what the catalogue records; a PHIVOLCS bulletin shows Philippine Standard Time, eight hours ahead. Entering local time throughout shifts the whole sequence together and barely moves the forecast, but keeping to one or the other is worth the care.</p>
+              <p class="help" id="faultNote"></p>
+            </fieldset>
+
+            <fieldset class="fs" style="margin-top:20px; margin-bottom:0;">
+              <legend>Model</legend>
+              <div class="seg" role="radiogroup" aria-label="Model" id="models"></div>
+              <p class="help">Extra Trees, Random Forest and LSTM, the three named in the study objectives. Each number is that model's root mean squared error on the 33 held-out test sequences.</p>
+            </fieldset>
+          </div>
+
+          <div class="box">
+            <fieldset class="fs" style="margin-bottom:12px;">
+              <legend>Foreshocks in the 14 days before</legend>
+            </fieldset>
+            <div style="overflow-x:auto;">
+              <table class="events">
+                <thead>
+                  <tr>
+                    <th scope="col">Date and time</th>
+                    <th scope="col">Magnitude</th>
+                    <th scope="col">Lat N</th>
+                    <th scope="col">Lon E</th>
+                    <th scope="col">Depth km</th>
+                    <th><span class="visually-hidden">Remove</span></th>
+                  </tr>
+                </thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+            <div class="lab__actions">
+              <button type="button" class="btn btn--ghost btn--sm" id="addRow">Add event</button>
+              <button type="button" class="btn btn--ghost btn--sm" id="sortRows">Sort by time</button>
+              <button type="button" class="btn btn--primary btn--sm" id="run">Forecast <span class="arw" aria-hidden="true">&rsaquo;</span></button>
+            </div>
+            <p class="msg" id="msg"></p>
+
+            <div class="upload">
+              <label class="upload__btn" for="upload">Load a sequence from a file</label>
+              <input type="file" id="upload" accept=".csv,.txt,.tsv,.xlsx,.xls">
+              <p class="help" id="uploadNote">A CSV with columns for date and time, magnitude, latitude, longitude and depth. Column names are matched loosely, so a header reading <code>Date and Time</code> or <code>origin time</code> both work. Save an Excel sheet as CSV first.</p>
+            </div>
+
+            <p class="help" style="margin-top:14px;">Looking for real events to try? PHIVOLCS publishes every bulletin at <a href="https://earthquake.phivolcs.dost.gov.ph/" rel="noopener noreferrer" target="_blank">earthquake.phivolcs.dost.gov.ph</a>, with the date, time, coordinates, depth and magnitude of each one.</p>
+          </div>
+        </div>
+
+        <div class="box readout" id="readout">
+          <p class="readout__state" id="state">Loading the trained models.</p>
+          <div class="skeleton skeleton--tall"></div>
+          <div class="skeleton" style="width:72%"></div>
+          <div class="skeleton" style="width:48%"></div>
+        </div>
+      </div>
+
+      <p class="caution rv-s" style="margin-top:28px;">
+        <strong>This page is a research demonstrator, not a warning system.</strong>
+        It is built entirely on the historical PHIVOLCS earthquake catalogue, and it can only describe patterns that catalogue contains. It estimates how large a mainshock would be <em>if</em> one follows the sequence you enter; it does not say whether one will occur, or when, or where. Typical error is about half a magnitude unit and the models under-forecast the largest earthquakes by considerably more than that. Official earthquake advisories for the Philippines come from PHIVOLCS and from no one else.
+      </p>
     </div>
   </section>
 
@@ -955,8 +1167,8 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <span class="stat__k">Error reduction over the historical average</span>
         </div>
         <div class="stat">
-          <span class="stat__v num" data-count="797">797</span>
-          <span class="stat__k">Mapped fault points the catalogue is measured against</span>
+          <span class="stat__v num" data-count="1015">1,015</span>
+          <span class="stat__k">Mapped active fault vertices every distance is measured against</span>
         </div>
       </div>
     </div>
@@ -999,14 +1211,14 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <article class="card" data-tilt>
           <span class="card__n">05</span>
           <h3>Model comparison</h3>
-          <p>Sixteen forecasters across four families, scored first by expanding-window validation and then once on a test partition nothing has touched.</p>
+          <p>Sixteen forecasters across four families, scored first by expanding-window validation and then once on a test partition nothing has touched. Three go to the public panel; the rest stay in the comparison tables.</p>
           <p class="card__foot">Tree, linear, recurrent, classical</p>
         </article>
         <article class="card" data-tilt>
           <span class="card__n">06</span>
           <h3>Browser forecaster</h3>
-          <p>Four trained models exported to run client side, with the feature mathematics reimplemented and checked value by value against the Python original.</p>
-          <p class="card__foot">1,620 values verified</p>
+          <p>The three models the objectives name, exported to run client side, with the feature mathematics reimplemented and checked value by value against the Python original.</p>
+          <p class="card__foot">Every test sequence replayed</p>
         </article>
       </div>
     </div>
@@ -1078,174 +1290,199 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
     </div>
   </section>
 
+  <!-- ===================== Cleaning ===================== -->
+  <section class="sec" id="cleaning">
+    <div class="shell">
+      <div class="sec__head rv">
+        <p class="eyebrow">Maeda's method</p>
+        <h2>18,338 records in. 166 forecast sequences out.</h2>
+        <p class="lede">Every step below names the condition that removed what it removed. The counts are read from the pipeline's own audit tables, not typed into this page.</p>
+      </div>
+
+      <div class="funnel rv-s" id="evidenceCleaning"></div>
+
+      <div class="split" style="margin-top:46px;">
+        <div class="prose rv">
+          <h3>What declustering is for</h3>
+          <p>An aftershock sequence is not a warning of anything. It is the crust settling after an earthquake that has already happened, and a model that treats those tremors as precursors will learn to forecast the past. Maeda's method separates the two by asking, for every event, whether an earlier and larger earthquake has already claimed it.</p>
+          <p>An event of magnitude <em>Mpre</em> draws a window around itself in space and in time. Anything inside that window and at least one magnitude unit smaller is dependent: part of that earthquake's own sequence rather than an independent event. The windows come from Equations 1 and 2 of Hirose et al. (2021), and they widen steeply with magnitude.</p>
+          <p>2,207 of the 17,667 cleaned records are dependent by this test, which is one event in eight. Those are the swarm members and aftershocks that would otherwise look like precursory activity.</p>
+          <h3>Which magnitude is used</h3>
+          <p>PHIVOLCS reports up to four magnitudes for one earthquake: ML, mb, Ms and Mw. They measure different things and saturate at different sizes, so one working value has to be adopted per event. The rule is a fixed preference applied without looking at the value, so the choice cannot bend toward a convenient number.</p>
+        </div>
+        <div class="stack rv">
+          <div class="tablewrap">
+            <table>
+              <caption>Maeda's windows, by precursor magnitude</caption>
+              <thead>
+                <tr><th scope="col">M<sub>pre</sub></th><th scope="col">L (km)</th><th scope="col">t<sub>a</sub> (days)</th><th scope="col">Cut-off</th></tr>
+              </thead>
+              <tbody id="evidenceWindows"></tbody>
+            </table>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <caption>Working magnitude: first available in this order</caption>
+              <thead>
+                <tr><th scope="col">#</th><th scope="col">Scale</th><th scope="col" style="text-align:right">Reported</th><th scope="col" style="text-align:right">Adopted</th></tr>
+              </thead>
+              <tbody id="evidenceScales"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <figure class="plate rv" style="margin-top:42px;">
+        <img src="figures/fig_cleaning_funnel.png?v=23fddd948f" width="2125" height="1054" loading="lazy" decoding="async" alt="Funnel chart from 18,338 raw PHIVOLCS records down to 166 forecast sequences, with each stage labelled by the condition that removed records: duplicate origins, dependent events under Maeda's method, events below magnitude 5.0, and windows too sparse or holding an earthquake as large as their own mainshock.">
+        <figcaption>The cleaning audit in one view. Bar width is on a square-root scale because the last stage is a hundredth of the first; the printed counts are the measurement.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ===================== Features ===================== -->
+  <section class="sec" id="features">
+    <div class="shell">
+      <div class="sec__head rv">
+        <p class="eyebrow">The inputs</p>
+        <h2>Twenty-seven numbers, computed from the window and nothing else.</h2>
+        <p class="lede">The first twenty-two follow Wang et al. (2023) as tabulated in the study methodology. The last five summarise the distance to the nearest active fault, which the data collection names as a selected parameter. Every one is computed from the 14 days and 100 km before the mainshock; the mainshock's own properties are excluded, being what is under forecast.</p>
+      </div>
+
+      <div class="tablewrap rv-s" style="margin-top:34px;">
+        <table>
+          <caption>The engineered seismic features, and how much each moves a forecast</caption>
+          <thead>
+            <tr>
+              <th scope="col">Feature</th>
+              <th scope="col">Category</th>
+              <th scope="col">What it measures</th>
+              <th scope="col" style="text-align:right">Mean |SHAP|</th>
+            </tr>
+          </thead>
+          <tbody id="evidenceFeatures"></tbody>
+        </table>
+      </div>
+      <p class="help rv-s" style="margin-top:14px;">Mean |SHAP| is in magnitude units: a feature with 0.12 moves a typical forecast by about a tenth of a magnitude unit. Blank means the feature carries less than a thousandth of a unit of influence. The model does not choose which equations to use and discard the rest; it is given all twenty-seven and weighs them, and the column above is how much weight each one actually got.</p>
+    </div>
+  </section>
+
   <!-- ===================== Results ===================== -->
   <section class="sec" id="results">
     <div class="shell">
       <div class="sec__head rv">
         <p class="eyebrow">Results</p>
         <h2>Real skill, and small. Both halves of that sentence matter.</h2>
-        <p class="lede">Sixteen forecasters ran on identical sequences. A third of them cannot beat simply quoting the historical average.</p>
+        <p class="lede">Extra Trees, Random Forest and LSTM, the three forecasters the study objectives name, scored once on 33 sequences none of them had seen. Two beat the historical average. One does not.</p>
       </div>
 
       <figure class="plate rv" style="margin-top:42px;">
-        <img src="figures/fig_leaderboard.png?v=04dcfa1b93" width="2134" height="1864" loading="lazy" decoding="async" alt="Horizontal bar chart of test root mean squared error for sixteen forecasting models. Extra Trees and Random Forest are shortest. A dashed line marks the climatology baseline; the multilayer perceptron, the convolutional network and the persistence baseline extend past it.">
-        <figcaption>Test-partition error for all sixteen models. Bars past the dashed line fail to beat the historical average.</figcaption>
+        <img src="figures/fig_objective_models.png?v=d4ccba39a4" width="2173" height="904" loading="lazy" decoding="async" alt="Horizontal bar chart of test root mean squared error for Extra Trees, Random Forest and LSTM against the climatology baseline. Extra Trees is shortest at 0.555 and the LSTM extends past the dashed baseline line at 0.599.">
+        <figcaption>The three models named in the study objectives, scored on the untouched test partition. The dashed line is the climatology baseline; a bar past it is a model that fails to beat quoting the historical average.</figcaption>
       </figure>
 
-      <figure class="plate rv" style="margin-top:38px;">
+      <div class="tablewrap rv" style="margin-top:38px;">
+        <table>
+          <caption>Test partition, 33 held-out sequences, Jun 2021 to Jan 2026. Magnitude units.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Model</th>
+              <th scope="col" style="text-align:right">RMSE</th>
+              <th scope="col" style="text-align:right">MSE</th>
+              <th scope="col" style="text-align:right">MAE</th>
+              <th scope="col" style="text-align:right">R squared</th>
+              <th scope="col" style="text-align:right">95% CI for RMSE</th>
+              <th scope="col" style="text-align:right">Skill</th>
+            </tr>
+          </thead>
+          <tbody id="evidenceMetrics"></tbody>
+        </table>
+      </div>
+      <p class="help rv-s" style="margin-top:14px;">Skill is the percentage reduction in mean squared error against climatology, which is the historical mean magnitude of the training sequences. A negative value means the model is worse than quoting that average. These figures are read from the pipeline's leaderboard table at build time, so the page cannot drift from the results.</p>
+
+      <div class="results rv" style="margin-top:48px;">
+        <div class="prose">
+          <h3>What the numbers say</h3>
+          <p>An Extra Trees ensemble on 27 features cuts squared error by 11.4% against quoting the historical average magnitude. Of the sixteen forecasters compared in the paper, three beat that baseline and thirteen do not. The typical error is 0.55 of a magnitude unit, the difference between a tremor and a damaging event, and the confidence interval on the leader runs from 0.397 to 0.701 against the baseline's 0.427 to 0.742. Those intervals overlap almost completely. On 33 held-out sequences this is a weak result honestly reported, not a strong one.</p>
+          <h3>The LSTM is in the objectives and behind the baseline</h3>
+          <p>The recurrent network scores 0.599 against climatology's 0.589, a skill of minus 3.4%. It is shown here because the study objectives name it, and reporting only the models that worked would be the more serious failure. With 100 training sequences of ten timesteps there is nothing like enough data for a network to pay for its parameters, and that is the finding, not a bug to be tuned away.</p>
+          <h3>Fault distance no longer earns its place</h3>
+          <p>On the 22 core features alone the leading model scores 0.547, which is better than the 0.555 it scores with all 27. Fault distance now costs accuracy rather than adding it, having appeared to help on the earlier and larger sample. Dist_std still ranks third of 27 by SHAP attribution, which is a reminder that influence inside a fitted model is not the same as a gain in held-out error. The honest reading is that this data set is too small to settle whether fault distance helps.</p>
+          <h3>Whether, not just how large</h3>
+          <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. A regularised logistic model over eight features beats the historical rate in all three M 5.0 cells, by 6.0%, 5.8% and 2.1% Brier skill at 50, 100 and 200 km. It finds nothing at M 6.0 and there are too few M 7.0 events to score at all, so those cells still report the observed frequency with its margin of error at 95% confidence.</p>
+          <p>Each radius is a separately trained model fitted on the events inside that radius, and the panel above feeds each one a window computed at its own radius. A 50 km ring holding none of your events falls back to the historical rate and says so rather than borrowing the figure from a wider ring.</p>
+          <h3>The mainshock is the largest event, strictly</h3>
+          <p>A mainshock is by definition the largest earthquake of its sequence. If a preceding event merely ties it, which of the two is the mainshock cannot be decided, so that window is not a foreshock sequence either. An earlier version of this data set broke the rule in 624 of 790 windows, because the observation radius of 100 km is far wider than Maeda's spatial window L, which is 5 km at M 5.0 and 16 km at M 6.0. Earthquakes that declustering had correctly assigned to a different cluster were being swept in as foreshocks, 92% of them from outside that event's own Maeda radius, a median 48 km away.</p>
+          <p>Those windows are rejected. 166 sequences remain, every foreshock strictly smaller than the mainshock it precedes, by at least 0.1 and a median of 0.50 magnitude units. The rule cost skill: 28.9% on the looser 199-sequence set against 11.4% here. The definition is still the right one to defend, and the smaller number is the one that goes in the paper.</p>
+        </div>
+
+        <div class="tablewrap">
+          <table>
+            <caption>Error by the size of the earthquake that actually arrived</caption>
+            <thead>
+              <tr>
+                <th scope="col">Observed</th>
+                <th scope="col" style="text-align:right">n</th>
+                <th scope="col" style="text-align:right">Forecast</th>
+                <th scope="col" style="text-align:right">Bias</th>
+              </tr>
+            </thead>
+            <tbody id="evidenceBands"></tbody>
+          </table>
+          <p class="help" style="margin-top:12px;">Extra Trees on the test partition. Bias is forecast minus observed, so a negative figure is an under-forecast.</p>
+          <table style="margin-top:28px;">
+            <caption>Sequences available to learn each band from</caption>
+            <thead>
+              <tr>
+                <th scope="col">Band</th>
+                <th scope="col" style="text-align:right">Train</th>
+                <th scope="col" style="text-align:right">Val</th>
+                <th scope="col" style="text-align:right">Test</th>
+              </tr>
+            </thead>
+            <tbody id="evidenceSupport"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <figure class="plate rv" style="margin-top:46px;">
+        <img src="figures/fig_magnitude_band.png?v=47f79e6380" width="2066" height="965" loading="lazy" decoding="async" alt="Two panels. The left plots forecast against observed mainshock magnitude for Extra Trees, Random Forest and LSTM, with points flattening well below the perfect-agreement line as the observed magnitude rises. The right is a bar chart of bias by observed band, positive below magnitude 5.5 and about minus one and a half above magnitude 7.0.">
+        <figcaption>Where the forecasts fail. Every model tracks the middle of the range and flattens against the top of it, under-forecasting the two M 7.0 sequences by about a magnitude and a half.</figcaption>
+      </figure>
+
+      <div class="split" style="margin-top:46px;">
+        <div class="prose rv">
+          <p class="eyebrow">Why the large ones come back small</p>
+          <h3>SHAP, on the M 7.1 the evaluator asked about</h3>
+          <p>SHAP decomposes a single forecast into the training mean plus one signed contribution per feature, and those contributions sum exactly to the forecast. It is the right tool for the question, and the answer is arithmetic rather than opinion.</p>
+          <p>The base value is M 5.57: what the model says knowing nothing about a sequence. For the M 7.1 in the test partition, all 27 feature contributions together come to <strong>plus 0.04</strong>. The largest foreshock in that window was M 4.3, below the average for the training set, so the single most influential feature actually pushed the forecast <em>down</em>.</p>
+          <p>That sequence did not look unusual. Nothing in the fourteen days before a magnitude 7.1 earthquake distinguished it from the ordinary run of magnitude 5.5 sequences, and no change of algorithm can extract a signal from a window that does not contain one. The model has three M 7.0 sequences to learn from in the entire training partition, and the validation partition has none at all.</p>
+          <p>This is the limit of the method on this catalogue, stated plainly. The panel above reports the ensemble's 90th percentile alongside its mean for the same reason: a mean fitted under squared error cannot reach a tail it has barely seen.</p>
+        </div>
+        <div class="stack rv">
+          <div class="tablewrap">
+            <table>
+              <caption>How one M 7.1 forecast was built, feature by feature</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Step</th>
+                  <th scope="col" style="text-align:right">Contribution</th>
+                  <th scope="col" style="text-align:right">Running</th>
+                </tr>
+              </thead>
+              <tbody id="evidenceCase"></tbody>
+            </table>
+          </div>
+          <figure class="plate">
+            <img src="figures/fig_shap.png?v=74c70bc4a0" width="2194" height="1234" loading="lazy" decoding="async" alt="Two SHAP panels. The left ranks features by mean absolute contribution, led by Mag_max at about 0.12 magnitude units. The right shows one dot per test sequence for each feature, shaded by feature value, with most contributions clustered within a tenth of a magnitude unit of zero.">
+            <figcaption>SHAP attribution for the Extra Trees model. The total influence of all 27 features is under four tenths of a magnitude unit, which is the same weak result the leaderboard reports in a different currency.</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <figure class="plate rv" style="margin-top:46px;">
         <img src="figures/fig_foreshock_gap.png?v=4291327cde" width="2052" height="949" loading="lazy" decoding="async" alt="Two panels. The left plots observed mainshock magnitude against the largest event in its fourteen-day window, with a dashed equal-magnitude line and the half below it shaded; most points fall in the shaded half. The right is a histogram of the difference between the two, centred below zero.">
         <figcaption>What the mainshock-is-largest rule removes. Every point on or below the dashed line is a window that held an earthquake at least as large as the mainshock it was meant to precede. Those 624 windows are excluded; the analysis keeps only the points strictly above the line.</figcaption>
       </figure>
-
-      <div class="results rv">
-        <div class="tablewrap">
-          <table>
-            <caption>Test partition, 33 held-out sequences, Jun 2021 to Jan 2026</caption>
-            <thead>
-              <tr><th scope="col">Model</th><th scope="col">RMSE</th><th scope="col">R squared</th><th scope="col">Skill</th></tr>
-            </thead>
-            <tbody>
-              <tr class="is-top"><td>Extra Trees</td><td>0.555</td><td>0.105</td><td class="accent">+11.4%</td></tr>
-              <tr><td>Random Forest</td><td>0.569</td><td>0.059</td><td class="accent">+6.8%</td></tr>
-              <tr><td>Support Vector Regression</td><td>0.571</td><td>0.050</td><td class="accent">+5.9%</td></tr>
-              <tr><td>k-Nearest Neighbours</td><td>0.589</td><td>-0.010</td><td>+0.0%</td></tr>
-              <tr class="is-ref"><td>Climatology baseline</td><td>0.589</td><td>-0.010</td><td>0.0%</td></tr>
-              <tr><td>ARIMA</td><td>0.592</td><td>-0.022</td><td>-1.1%</td></tr>
-              <tr><td>LSTM</td><td>0.599</td><td>-0.044</td><td>-3.4%</td></tr>
-              <tr><td>Elastic Net</td><td>0.616</td><td>-0.104</td><td>-9.3%</td></tr>
-              <tr><td>1D-CNN</td><td>0.855</td><td>-1.130</td><td>-110.8%</td></tr>
-              <tr><td>Multilayer Perceptron</td><td>1.153</td><td>-2.871</td><td>-283.2%</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="prose">
-          <h3>What the numbers say</h3>
-          <p>An Extra Trees ensemble on 27 features cuts squared error by 11.4% against quoting the historical average magnitude. Three models beat that baseline and thirteen do not. The typical error is 0.55 of a magnitude unit, the difference between a tremor and a damaging event, and the confidence interval on the leader runs from 0.397 to 0.701 against the baseline's 0.427 to 0.742. Those intervals overlap almost completely. On 33 held-out sequences this is a weak result honestly reported, not a strong one.</p>
-          <h3>Fault distance earns its place</h3>
-          <p>On the 22 core features alone the leading model scores 0.547, which is better than the 0.555 it scores with all 27. Fault distance now costs accuracy rather than adding it, having appeared to help on the earlier and larger sample. Dist_mean still ranks fourth of 27 by permutation importance, which is a reminder that importance inside a fitted model is not the same as a gain in held-out error. The honest reading is that this data set is too small to settle whether fault distance helps.</p>
-          <h3>Whether, not just how large</h3>
-          <p>A second model was built for the other half of the objective: the chance an earthquake of a given size follows within two weeks. A regularised logistic model over eight features beats the historical rate in all three M 5.0 cells, by 6.0%, 5.8% and 2.1% Brier skill at 50, 100 and 200 km. It finds nothing at M 6.0 and there are too few M 7.0 events to score at all, so those cells still report the observed frequency with its margin of error at 95% confidence.</p>
-          <p>Those intervals come from a bootstrap that resamples whole years rather than individual anchors. The standard Wilson interval assumes independent trials, and these are overlapping windows cut from one catalogue where a single productive swarm supplies many of them. Dropping that assumption roughly triples the margin of error, from 2.1 to 5.6 percentage points on the headline figure, which is the honest width.</p>
-          <h3>The mainshock is the largest event, strictly</h3>
-          <p>A mainshock is by definition the largest earthquake of its sequence. If a preceding event merely ties it, which of the two is the mainshock cannot be decided, so that window is not a foreshock sequence either. An earlier version of this data set broke the rule in 624 of 790 windows, because the observation radius of 100 km is far wider than Maeda's spatial window L, which is 5 km at M 5.0 and 16 km at M 6.0. Earthquakes that declustering had correctly assigned to a different cluster were being swept in as foreshocks, 92% of them from outside that event's own Maeda radius, a median 48 km away.</p>
-          <p>Those windows are rejected. 166 sequences remain, every foreshock strictly smaller than the mainshock it precedes, by at least 0.1 and a median of 0.50 magnitude units.</p>
-          <p>The rule costs accuracy and the cost is stated rather than buried. Skill fell from 28.9% on the looser 199-sequence set to 11.4% here, and the held-out partition is down to 33 sequences. A tie between two magnitudes reported to one decimal place means the events were within about a tenth of each other, not that they were the same size, so some of what was discarded was real signal. The definition is still the right one to defend, and the smaller number is the one that goes in the paper.</p>
-          <h3>Depth beats recurrence</h3>
-          <p>The recurrent networks land behind the baseline and the multilayer perceptron finishes last of sixteen, at nearly four times the baseline's squared error. With 100 training sequences of ten timesteps there is nothing like enough data for a network to pay for its parameters, and the order-indexed series the ARIMA models read is 100 mainshocks spread over 43 years, which is not a time series in any useful sense.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== Forecast lab ===================== -->
-  <section class="sec" id="lab">
-    <div class="shell">
-      <div class="sec__head rv">
-        <p class="eyebrow">Try it</p>
-        <h2>Run the model on a foreshock sequence.</h2>
-        <p class="lede">Four trained models from the paper, running in your browser on the events you give them. The panel returns how large a mainshock would be, and separately how often one has actually followed a sequence like this within two weeks.</p>
-      </div>
-
-
-      <div class="howto rv-s">
-        <div class="howto__step">
-          <span class="howto__n" aria-hidden="true">1</span>
-          <h3>Choose a sequence</h3>
-          <p><strong>A recorded sequence</strong> loads a real case from the held-out test partition, so you can compare the forecast against what actually happened. <strong>Your own</strong> lets you type an epicentre, a date and your own list of tremors.</p>
-        </div>
-        <div class="howto__step">
-          <span class="howto__n" aria-hidden="true">2</span>
-          <h3>Check the foreshocks</h3>
-          <p>One row per tremor in the 14 days before. <code>Days before</code> counts backward from the forecast moment, so <code>0.44</code> means about eleven hours earlier. At least three complete rows are needed before the model can be computed.</p>
-        </div>
-        <div class="howto__step">
-          <span class="howto__n" aria-hidden="true">3</span>
-          <h3>Pick a model and forecast</h3>
-          <p>The number beside each model is its test error in magnitude units, so lower is better. Press <strong>Forecast</strong> and the panel returns the expected magnitude, its uncertainty, and the historical chance that anything follows.</p>
-        </div>
-        <div class="howto__step">
-          <span class="howto__n" aria-hidden="true">4</span>
-          <h3>Read it against the record</h3>
-          <p>Every recorded sequence here is one where the mainshock was strictly larger than all of its foreshocks, which is what the word means. Expect the forecast to sit above the largest tremor you entered. If it lands below, the model has under-forecast, and the panel says so rather than hiding it.</p>
-        </div>
-      </div>
-
-      <div class="lab">
-        <div>
-          <div class="box">
-            <fieldset class="fs">
-              <legend>Sequence</legend>
-              <div class="seg" role="radiogroup" aria-label="Sequence source">
-                <label><input type="radio" name="source" value="recorded" checked><span>A recorded sequence</span></label>
-                <label><input type="radio" name="source" value="custom"><span>Your own</span></label>
-              </div>
-            </fieldset>
-
-            <div class="field" id="pickWrap">
-              <label for="pick">Recorded mainshock</label>
-              <select id="pick"></select>
-              <p class="help">Real sequences from the held-out test partition, so the observed outcome is known.</p>
-            </div>
-
-            <div id="customWrap" hidden>
-              <div class="grid3">
-                <div class="field">
-                  <label for="lat">Latitude N</label>
-                  <input type="number" id="lat" step="0.01" min="0" max="25" value="14.20">
-                </div>
-                <div class="field">
-                  <label for="lon">Longitude E</label>
-                  <input type="number" id="lon" step="0.01" min="110" max="140" value="121.10">
-                </div>
-                <div class="field">
-                  <label for="when">Forecast date</label>
-                  <input type="date" id="when" value="2024-06-15">
-                </div>
-              </div>
-              <p class="help">The epicentre of the sequence and the moment you are forecasting from. Regional history and the distance to the nearest mapped fault are both resolved from the catalogue at that point.</p>
-            </div>
-
-            <fieldset class="fs" style="margin-top:20px; margin-bottom:0;">
-              <legend>Model</legend>
-              <div class="seg" role="radiogroup" aria-label="Model" id="models"></div>
-            </fieldset>
-          </div>
-
-          <div class="box">
-            <fieldset class="fs" style="margin-bottom:12px;">
-              <legend>Foreshocks in the 14 days before</legend>
-            </fieldset>
-            <div style="overflow-x:auto;">
-              <table class="events">
-                <thead>
-                  <tr>
-                    <th scope="col">Days before</th>
-                    <th scope="col">Magnitude</th>
-                    <th scope="col">Lat N</th>
-                    <th scope="col">Lon E</th>
-                    <th scope="col">Depth km</th>
-                    <th><span class="visually-hidden">Remove</span></th>
-                  </tr>
-                </thead>
-                <tbody id="rows"></tbody>
-              </table>
-            </div>
-            <div class="lab__actions">
-              <button type="button" class="btn btn--ghost btn--sm" id="addRow">Add event</button>
-              <button type="button" class="btn btn--primary btn--sm" id="run">Forecast <span class="arw" aria-hidden="true">&rsaquo;</span></button>
-            </div>
-            <p class="msg" id="msg"></p>
-          </div>
-        </div>
-
-        <div class="box readout" id="readout">
-          <p class="readout__state" id="state">Loading the trained models.</p>
-          <div class="skeleton skeleton--tall"></div>
-          <div class="skeleton" style="width:72%"></div>
-          <div class="skeleton" style="width:48%"></div>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -1276,7 +1513,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <div class="tcell">
           <span class="tcell__i" aria-hidden="true">4</span>
           <h3>Cross-language verification</h3>
-          <p>The browser reimplementation is replayed against Python on 60 held-out sequences: 1,620 feature values and 240 predictions.</p>
+          <p>The browser reimplementation is replayed against Python on every held-out sequence, feature by feature and prediction by prediction, and the build fails if any pair disagrees past 1e-5.</p>
         </div>
         <div class="tcell">
           <span class="tcell__i" aria-hidden="true">5</span>
@@ -1287,6 +1524,16 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
           <span class="tcell__i" aria-hidden="true">6</span>
           <h3>Limits published</h3>
           <p>What the model cannot do is given its own section rather than buried in a footnote.</p>
+        </div>
+        <div class="tcell">
+          <span class="tcell__i" aria-hidden="true">7</span>
+          <h3>Magnitudes taken, never adjusted</h3>
+          <p>Every magnitude is the value DOST-PHIVOLCS published for that earthquake. None is converted between scales, rescaled or recomputed; where four are reported the first available in a fixed order is adopted and the rest are left alone. The energy feature is derived from the published magnitude by the standard log-energy relation, so it tracks the released energy exactly as the official record documents it.</p>
+        </div>
+        <div class="tcell">
+          <span class="tcell__i" aria-hidden="true">8</span>
+          <h3>Nothing is uploaded</h3>
+          <p>The models and the catalogue are downloaded to your browser and every forecast is computed there. Sequences you enter, and files you load, never leave your device.</p>
         </div>
       </div>
     </div>
@@ -1325,7 +1572,22 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
         <div class="limit">
           <span class="limit__t">One fault layer</span>
           <h3>Fault distance is only as good as the map</h3>
-          <p>Distances are measured to fault lines digitised in QGIS. A fault absent from that layer is invisible to the model, and the browser approximates the assignment from 797 mapped points.</p>
+          <p>Distances are measured to the active fault lines digitised in QGIS, 1,015 mapped vertices supplied by the authors. A fault absent from that layer is invisible to the model, and the distance is to the nearest vertex rather than to the nearest point on the trace between two of them.</p>
+        </div>
+        <div class="limit">
+          <span class="limit__t">Historical data only</span>
+          <h3>Everything here comes from the PHIVOLCS catalogue</h3>
+          <p>This page and the models behind it are built entirely on the historical earthquake record published by DOST-PHIVOLCS, 1907 to 2026. They can describe only the patterns that record contains. They carry no live seismic feed, no real-time monitoring and no connection to any warning system, and nothing on this page is an official advisory. Those come from PHIVOLCS alone.</p>
+        </div>
+        <div class="limit">
+          <span class="limit__t">The large events are the ones it misses</span>
+          <h3>Above M 7.0 the forecast is about 1.4 too low</h3>
+          <p>Error is not spread evenly. The models are close in the M 5.0 to 5.9 band that supplies four in five training sequences, and fall roughly 0.6 short at M 6.0 to 6.9 and 1.4 short above M 7.0. Three M 7.0 sequences exist in the entire training partition and none in the validation partition. A model fitted under squared error shrinks toward the average it was shown, and this one was shown almost no large earthquakes. The panel reports the ensemble's 90th percentile alongside its mean so the shortfall is visible rather than implied.</p>
+        </div>
+        <div class="limit">
+          <span class="limit__t">False alarms and misses</span>
+          <h3>Both error directions are real and neither is eliminated</h3>
+          <p>The occurrence model beats the historical rate at M 5.0 by between 2 and 6 percent Brier skill, which is a real improvement and a small one. It finds no skill at M 6.0 and cannot be scored at M 7.0. Any claim that this method minimises false alarms, or minimises missed warnings, would be stronger than the measurements support. The confidence intervals on the magnitude forecast overlap the baseline's almost completely.</p>
         </div>
       </div>
     </div>
@@ -1424,7 +1686,7 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   </div>
 </footer>
 
-<script src="forecast.js?v=f544ce9140"></script>
+<script src="forecast.js?v=0fbd3a31dc"></script>
 <script>
 /* Interaction layer. Every animation is gated on prefers-reduced-motion and
    only transform and opacity are animated, so nothing here forces layout. */
@@ -1560,6 +1822,6 @@ input[type="number"]:focus-visible, input[type="date"]:focus-visible, select:foc
   }
 })();
 </script>
-<script src="app.js?v=1f01c0d72e"></script>
+<script src="app.js?v=dcf6092ecf"></script>
 </body>
 </html>

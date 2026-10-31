@@ -209,14 +209,20 @@
    * supplied column on 3,000 catalogue events: the same source is chosen for
    * 99.7% of them, and the rest sit at most 0.24 km further out.
    */
-  function nearestSourceKm(lat, lon, sources) {
-    if (!sources || !sources.lat || !sources.lat.length) { return NaN; }
-    var best = Infinity;
+  function nearestSource(lat, lon, sources) {
+    if (!sources || !sources.lat || !sources.lat.length) {
+      return { km: NaN, lat: NaN, lon: NaN };
+    }
+    var best = Infinity, at = -1;
     for (var i = 0; i < sources.lat.length; i++) {
       var d = haversineKm(lat, lon, sources.lat[i], sources.lon[i]);
-      if (d < best) { best = d; }
+      if (d < best) { best = d; at = i; }
     }
-    return best;
+    return { km: best, lat: sources.lat[at], lon: sources.lon[at] };
+  }
+
+  function nearestSourceKm(lat, lon, sources) {
+    return nearestSource(lat, lon, sources).km;
   }
 
   /**
@@ -327,8 +333,17 @@
    * catalogue. Four features count days since the last large regional event and
    * the beta statistic needs a background rate, so none of this can come from
    * the handful of events a user types in.
+   *
+   * `radiusKm` overrides the bundle's own radius. The occurrence table forecasts
+   * three radii from three separately trained models, and each of those models
+   * was fitted on features computed inside its own radius. Passing one context
+   * built at 100 km to all three fed the 50 km model a window it was never
+   * trained on, which is why those three rows used to move together even when
+   * nothing the reader entered lay within 50 km of the epicentre.
    */
-  function regionalContext(catalogue, lat, lon, tEnd, cfg) {
+  function regionalContext(catalogue, lat, lon, tEnd, cfg, radiusKm) {
+    var radius = (typeof radiusKm === "number" && isFinite(radiusKm))
+      ? radiusKm : cfg.radius_km;
     var priorTimes = [], priorMags = [], backgroundCount = 0;
     var backgroundStart = tEnd - cfg.background_days;
     /* The epsilon matters. A mainshock's own catalogue record sits at exactly
@@ -339,7 +354,7 @@
     for (var i = 0; i < catalogue.n; i++) {
       var t = catalogue.t[i];
       if (t >= tEnd - EPS) { break; }
-      if (haversineKm(lat, lon, catalogue.lat[i], catalogue.lon[i]) > cfg.radius_km) { continue; }
+      if (haversineKm(lat, lon, catalogue.lat[i], catalogue.lon[i]) > radius) { continue; }
       priorTimes.push(t);
       priorMags.push(catalogue.mag[i]);
       if (t >= backgroundStart) { backgroundCount += 1; }
@@ -386,6 +401,26 @@
      disagreeing with the paper. The linear and recurrent models are fitted in
      float64 and must not be cast. */
   function toFloat32(x) { return x.map(Math.fround); }
+
+  /* Every tree's own forecast, which the mean throws away. The ninetieth
+     percentile of this spread is what the readout quotes as an upper figure:
+     the mean of a squared-error ensemble shrinks toward the training average,
+     and on this data set that shrinkage reaches a full magnitude unit above
+     M 7.0, so quoting only the centre understates exactly the events that
+     matter most. */
+  function treeForecasts(model, x) {
+    if (model.kind !== "forest") { return null; }
+    var xf = toFloat32(x), out = new Array(model.trees.length);
+    for (var i = 0; i < model.trees.length; i++) { out[i] = runTree(model.trees[i], xf); }
+    return out;
+  }
+
+  function quantile(sorted, q) {
+    if (!sorted || !sorted.length) { return NaN; }
+    var pos = (sorted.length - 1) * q;
+    var lo = Math.floor(pos), hi = Math.ceil(pos);
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+  }
 
   function predictFeatures(model, x) {
     var i, acc = 0;
@@ -514,13 +549,23 @@
     }
     var raw = opts.features || buildFeatures(events, opts.context, bundle);
     var x = preprocess(raw, bundle);
-    return { magnitude: predictFeatures(model, x), features: x, raw: raw };
+    var trees = treeForecasts(model, x);
+    var spread = null;
+    if (trees) {
+      var sorted = trees.slice().sort(function (a, b) { return a - b; });
+      spread = { lo: quantile(sorted, 0.10), hi: quantile(sorted, 0.90),
+                 n: sorted.length };
+    }
+    return { magnitude: predictFeatures(model, x), features: x, raw: raw,
+             spread: spread };
   }
 
   return {
     fmd: fmd,
     occurrenceProbability: occurrenceProbability,
     nearestSourceKm: nearestSourceKm,
+    nearestSource: nearestSource,
+    treeForecasts: treeForecasts,
     faultFeatures: faultFeatures,
     mcMaxc: mcMaxc,
     bValueMle: bValueMle,
@@ -533,6 +578,7 @@
     preprocess: preprocess,
     buildSequence: buildSequence,
     predictFeatures: predictFeatures,
+    quantile: quantile,
     predictLstm: predictLstm,
     forecast: forecast,
   };

@@ -145,8 +145,14 @@ def check_dataset():
     mains = pd.read_excel(DATASET, sheet_name="Mainshocks")
     fores = pd.read_excel(DATASET, sheet_name="Foreshocks")
 
-    joined = fores.merge(mains[["Sequence ID", "Recorded mainshock magnitude"]],
-                         on="Sequence ID", how="left", validate="many_to_one")
+    # The mainshock sheet and the foreshock sheet both call their size column
+    # "Magnitude", which is what the reviewers asked for and what the PHIVOLCS
+    # workbook calls it. Rename on the way in so the comparison below reads as
+    # the question it is asking.
+    target = mains[["Sequence ID", "Magnitude"]].rename(
+        columns={"Magnitude": "Recorded mainshock magnitude"})
+    joined = fores.merge(target, on="Sequence ID", how="left",
+                         validate="many_to_one")
     check("every foreshock belongs to a listed mainshock",
           int(joined["Recorded mainshock magnitude"].isna().sum()) == 0,
           f"{int(joined['Recorded mainshock magnitude'].isna().sum())} orphans")
@@ -182,8 +188,8 @@ def check_dataset():
           f"range {fores['Days before mainshock'].min():.3f} "
           f"to {fores['Days before mainshock'].max():.3f} days")
     check("every mainshock reaches M 5.0",
-          bool(mains["Recorded mainshock magnitude"].min() >= 5.0),
-          f"minimum is {mains['Recorded mainshock magnitude'].min()}")
+          bool(mains["Magnitude"].min() >= 5.0),
+          f"minimum is {mains['Magnitude'].min()}")
     print(f"         {len(mains):,} mainshocks, {len(fores):,} foreshock records, "
           f"partitions {dict(mains['Partition'].value_counts())}")
     return mains

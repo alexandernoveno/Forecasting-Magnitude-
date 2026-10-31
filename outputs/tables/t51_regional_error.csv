@@ -1,0 +1,5 @@
+Region,n,Mean observed M,Extra Trees RMSE,Extra Trees bias,Random Forest RMSE,Random Forest bias,LSTM RMSE,LSTM bias
+"Philippine Trench, east of Mindanao",23,5.66,0.56,-0.131,0.577,-0.121,0.612,0.061
+Mindanao interior and the Cotabato Trench,4,5.45,0.411,0.135,0.345,0.11,0.466,0.29
+"Southern Luzon, Bicol and the Visayan seas",4,5.35,0.069,0.022,0.105,0.021,0.426,0.35
+Luzon and the Philippine Fault's northern reach,2,6.25,1.058,-0.395,1.117,-0.533,0.904,-0.517

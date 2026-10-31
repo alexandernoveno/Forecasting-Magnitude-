@@ -10,10 +10,19 @@ the foreshock sequence preceding it. Every event carries its distance to the
 nearest active fault, measured against fault lines mapped in QGIS.
 
 **The headline result is modest and reported as such.** An Extra Trees ensemble
-on 27 engineered features reduces squared error by 23.6% against simply quoting
+on 27 engineered features reduces squared error by 11.4% against simply quoting
 the historical average magnitude. The typical error is still about half a
-magnitude unit. A third of the field, including the convolutional network and
-the multilayer perceptron, fails to beat that average at all.
+magnitude unit, and the confidence interval on the leader overlaps the
+baseline's almost completely. Three of the sixteen models beat that average and
+thirteen do not, among them the LSTM the objectives name.
+
+**It fails hardest where it would matter most.** Error is near zero in the
+M 5.0 to 5.4 band and reaches about 1.4 magnitude units above M 7.0. The
+training partition contains three M 7.0 sequences and the validation partition
+contains none. SHAP decomposition of the largest test case shows all 27 feature
+contributions summing to +0.04 against a base value of M 5.57: the fourteen
+days before that M 7.1 did not look different from the fourteen days before an
+ordinary M 5.5.
 
 This is not a prediction system. It estimates how large a mainshock would be if
 one follows a sequence already under way, and says nothing about whether one
@@ -23,20 +32,24 @@ will occur, or when, or where.
 
 | Path | What it is |
 |---|---|
-| `earthquake_analysis.py` | The whole analysis in one file. 50 tables, 11 figures, one Word document. |
+| `earthquake_analysis.py` | The whole analysis in one file. 63 tables, 16 figures, one Word document. |
 | `index.html` | The landing page, served at the repository root by GitHub Pages |
 | `app.js` | Hero drum chart and the forecast panel behaviour |
 | `export_model_bundle.py` | Exports the trained models to JSON for the browser |
 | `verify_bundle.cjs` | Checks the browser reimplementation against Python |
 | `verify_forecasts.py` | Independent check of the data set and the forecasts, for reviewers |
 | `export_sequence_dataset.py` | Writes every mainshock with its foreshocks to a workbook |
+| `build_chapter4.py` | Lays the same tables out as Chapter 4: four discussions and a synthesis |
 | `build_client_package.py` | Copies the files a reviewer needs into `For Client/` |
+| `data/active_faults.json` | Active fault traces, for the map and the distance lookup |
 | `outputs/` | Generated tables, figures and the Word document |
 | `Earthquake Data Sets NEW.xlsx` | The source catalogue with mapped fault distances |
 
-The analysis is one file: **`earthquake_analysis.py`**. It produces 50
-APA 7th-edition tables and 11 figures in a single Word document, plus every
-table as CSV.
+The analysis is one file: **`earthquake_analysis.py`**. It produces 63
+APA 7th-edition tables and 16 figures in a single Word document, plus every
+table as CSV. `build_chapter4.py` then arranges a subset of those tables into
+the Chapter 4 structure the thesis evaluators asked for, without recomputing
+anything, so the two documents cannot disagree.
 
 ## Run it
 
@@ -58,9 +71,12 @@ python earthquake_analysis.py --excel "Other Catalogue.xlsx"
 
 ```
 outputs/
-  Statistical_Analysis_Tables.docx   50 tables + 11 figures, APA format
+  Statistical_Analysis_Tables.docx   63 tables + 16 figures, APA format
+  Chapter_4_Results_and_Discussion.docx   the same results, in the thesis order
+  Foreshock_Sequences.xlsx           every mainshock with its own foreshocks
+  Train_Test_Datasets.xlsx           the modelling rows, one sheet per partition
   tables/*.csv                       every table as raw numbers
-  tables/feature_matrix.csv          the 22-feature modelling data set
+  tables/feature_matrix.csv          the 27-feature modelling data set
   tables/cv_raw_folds.csv            per-model, per-fold validation scores
   figures/*.png                      300 dpi, greyscale-safe
 ```
@@ -117,9 +133,10 @@ excluded: it is a property of the event being forecast.
 authors' own QGIS measurement. Recomputing them from the coordinate pairs beside
 them agrees for 98.2% of events to within a kilometre; the residual grows with
 distance and is immaterial inside the 100 km observation radius. The browser
-cannot rerun a QGIS layer, so it takes the nearest of the 797 distinct source
-points the catalogue resolves to, which reproduces the mapped assignment for
-99.7% of events and is at most 0.24 km further out for the rest.
+cannot rerun a QGIS layer, so it takes the nearest of the 1,015 mapped fault
+vertices the authors supplied, a superset of the 797 the catalogue's own column
+resolves to. Recomputing every catalogue event against the fuller set moves the
+distance by a median of 0.06 km, and by more than 1 km for 1.7% of events.
 
 **Occurrence probability is reported as a historical rate, not a model output.**
 Objective 2 asks for the magnitude and its probability. The magnitude model
@@ -208,9 +225,10 @@ runs the trained models in the browser.
 |---|---|
 | `index.html` | The page itself: markup, design tokens, interaction layer |
 | `app.js` | Hero drum chart and forecast panel |
-| `forecast.js` | Feature engineering and the four models, reimplemented in JavaScript |
-| `model_bundle.json` | Random Forest, Gradient Boosting, Elastic Net and LSTM, exported |
+| `forecast.js` | Feature engineering and the three models, reimplemented in JavaScript |
+| `model_bundle.json` | Extra Trees, Random Forest and LSTM, the evidence panels and the fault geometry |
 | `catalogue.json` | The cleaned catalogue, for regional context |
+| `data/active_faults.json` | Active fault traces, broken wherever consecutive vertices are over 40 km apart |
 | `export_model_bundle.py` | Builds the two JSON files from the trained models |
 | `verify_bundle.cjs` | Checks the JavaScript against Python |
 
@@ -236,20 +254,16 @@ node verify_bundle.cjs           # confirm the browser matches Python
 **Run `verify_bundle.cjs` after touching either implementation.** `forecast.js`
 is a second implementation of maths that already exists in Python, so the two
 can drift apart silently and the page would report wrong forecasts with no
-error. The verifier replays 60 held-out sequences through the browser code and
-compares against Python: 1,320 feature values and 240 predictions, failing on
-any disagreement past tolerance.
+error. The verifier replays every held-out sequence through the browser code
+and compares against Python, feature by feature and prediction by prediction,
+failing on any disagreement past 1e-5.
 
-Three of the four models agree with Python to floating-point noise. Extra Trees
-does too, because its split thresholds are drawn at random inside each feature's
-range and so rarely sit next to a value being tested. The Random Forest is the
-exception: its thresholds are midpoints between adjacent observed values,
-exactly where test values cluster, so a feature differing in the seventh decimal
-can land on the other side of a split. Measured over the 60 sequences, that
-moves its forecast by at most 1.04e-2 magnitude units and changes the
-two-decimal figure on the page in 3 cases of 60. That is 2% of the model's own
-RMSE and well inside the plus or minus half a unit the page already reports, so
-it is bounded and documented rather than engineered away.
+All three models now agree with Python to floating-point noise, worst
+difference 4.8e-7. They did not always. scikit-learn casts the feature matrix
+to float32 before walking a tree, and `forecast.js` compared float64 values
+against the split thresholds, which moved the Random Forest by up to 3e-3
+magnitude units. `Math.fround` on the tree path fixed it; the verifier's
+tolerance had been loose enough to hide it, and is not any more.
 
 The panel forecasts the magnitude a mainshock would reach given a foreshock
 sequence already under way. It does not forecast whether one will happen, or

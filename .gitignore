@@ -29,3 +29,12 @@ EARTHQUAKE SEQUENCE.pdf
 CLARIFICATION AND REVISIONS.pdf
 *.pdf
 For Client/
+
+# Material the authors send for revision. The Word documents carry thesis
+# chapters, which stay out of a public repository for the same reason the
+# manuscript PDFs do. What the project actually uses from this folder is
+# derived into data/active_faults.json, which is committed.
+revision from client/
+
+# Local dev-server config for the preview pane, not part of the site.
+.claude/

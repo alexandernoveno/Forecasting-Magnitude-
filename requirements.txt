@@ -8,6 +8,11 @@ openpyxl>=3.1
 python-docx>=1.1
 matplotlib>=3.7
 
+# Optional, and the only optional package that changes what gets reported
+# rather than only how fast it runs. Without it the SHAP tables and figure are
+# omitted with a note in their place; the rest of the pipeline is unaffected.
+shap>=0.44
+
 # Optional. The LSTM, GRU and 1D-CNN run on NumPy implementations contained in
 # earthquake_analysis.py when neither of these is importable, so the pipeline
 # never depends on them. Install one only to train the networks on a

@@ -179,9 +179,22 @@
 })();
 
 
+  /* One fetch of the bundle, shared. The forecaster needs it and so do the
+     evidence tables further down the page, and it is three megabytes. */
+  var _bundle = null;
+  function bundlePromise() {
+    if (!_bundle) {
+      _bundle = fetch("model_bundle.json", { cache: "no-cache" }).then(function (r) {
+        if (!r.ok) { throw new Error("model_bundle.json " + r.status); }
+        return r.json();
+      });
+    }
+    return _bundle;
+  }
+
   /* =======================================================================
      Forecast lab
-     Loads the exported models and the catalogue on demand, recomputes the 22
+     Loads the exported models and the catalogue on demand, recomputes the 27
      features from the events on screen, and runs the selected model. The
      feature maths lives in forecast.js and is checked against Python by
      verify_bundle.cjs; nothing here reimplements it.
@@ -194,25 +207,30 @@
       state: document.getElementById("state"),
       readout: document.getElementById("readout"),
       rows: document.getElementById("rows"),
-      pick: document.getElementById("pick"),
-      pickWrap: document.getElementById("pickWrap"),
-      customWrap: document.getElementById("customWrap"),
       models: document.getElementById("models"),
       msg: document.getElementById("msg"),
       lat: document.getElementById("lat"),
       lon: document.getElementById("lon"),
       when: document.getElementById("when"),
+      upload: document.getElementById("upload"),
+      uploadNote: document.getElementById("uploadNote"),
+      fault: document.getElementById("faultNote"),
     };
-    var bundle = null, catalogue = null, loading = false, chosen = "random_forest";
+    var bundle = null, catalogue = null, loading = false, chosen = "extra_trees";
 
-    function source() {
-      var hit = document.querySelector('input[name="source"]:checked');
-      return hit ? hit.value : "recorded";
-    }
-
+    /* Clearing the readout on every failed validation is not cosmetic. A result
+       left on screen beside a rejected input reads as the result of that input,
+       and an evaluator reported exactly that confusion. Nothing survives a
+       refusal to forecast. */
     function setMsg(text, isError) {
       el.msg.textContent = text || "";
       el.msg.className = "msg" + (isError ? " msg--error" : "");
+      if (isError) { idle("Fix the highlighted fields, then forecast again."); }
+    }
+
+    function clearBad() {
+      Array.prototype.forEach.call(section.querySelectorAll(".is-bad"),
+        function (node) { node.classList.remove("is-bad"); });
     }
 
     /* ---- data loading, with real loading and error states ---------------- */
@@ -220,10 +238,7 @@
       if (bundle || loading) { return Promise.resolve(); }
       loading = true;
       return Promise.all([
-        fetch("model_bundle.json", { cache: "no-cache" }).then(function (r) {
-          if (!r.ok) { throw new Error("model_bundle.json " + r.status); }
-          return r.json();
-        }),
+        bundlePromise(),
         fetch("catalogue.json", { cache: "no-cache" }).then(function (r) {
           if (!r.ok) { throw new Error("catalogue.json " + r.status); }
           return r.json();
@@ -233,10 +248,9 @@
         catalogue = parts[1];
         loading = false;
         buildModelChoices();
-        buildExampleChoices();
         syncSegments();
-        loadExample(bundle.examples[0]);
-        idle("Pick a sequence and a model, then forecast.");
+        seedTable();
+        idle("Enter a sequence and press Forecast.");
       }).catch(function (err) {
         loading = false;
         el.readout.innerHTML = "";
@@ -263,34 +277,23 @@
         label.appendChild(input);
         label.appendChild(span);
         label.title = m.note + " Test RMSE " + m.rmse.toFixed(3) + " magnitude units.";
-        input.addEventListener("change", function () { chosen = key; });
+        input.addEventListener("change", function () { chosen = key; syncSegments(); });
         el.models.appendChild(label);
       });
       chosen = Object.keys(bundle.models)[0];
     }
 
-    function buildExampleChoices() {
-      el.pick.innerHTML = "";
-      bundle.examples.forEach(function (ex) {
-        var opt = document.createElement("option");
-        opt.value = ex.id;
-        opt.textContent = ex.when + ", " + ex.epicentre[0].toFixed(2) + " N "
-          + ex.epicentre[1].toFixed(2) + " E, " + ex.events.length + " foreshocks";
-        el.pick.appendChild(opt);
-      });
-      el.pick.addEventListener("change", function () {
-        var ex = bundle.examples.filter(function (e) { return e.id === el.pick.value; })[0];
-        if (ex) { loadExample(ex); }
-      });
-    }
-
     /* ---- the event editor ------------------------------------------------ */
+    /* Each foreshock is entered as the moment it happened, not as a decimal
+       count of days before the forecast. "5.3523 days before" is a quantity
+       nobody reads off a PHIVOLCS bulletin; a date and a time is. The elapsed
+       days the features need are computed here instead of by the reader. */
     var COLUMNS = [
-      { key: "before", step: "0.01", min: "0", max: "14" },
-      { key: "mag", step: "0.1", min: "0", max: "10" },
-      { key: "lat", step: "0.01", min: "0", max: "25" },
-      { key: "lon", step: "0.01", min: "110", max: "140" },
-      { key: "depth", step: "1", min: "0", max: "750" },
+      { key: "at", type: "datetime-local", label: "date and time" },
+      { key: "mag", type: "number", step: "0.1", min: "1", max: "10", label: "magnitude" },
+      { key: "lat", type: "number", step: "0.01", min: "0", max: "25", label: "latitude N" },
+      { key: "lon", type: "number", step: "0.01", min: "110", max: "140", label: "longitude E" },
+      { key: "depth", type: "number", step: "1", min: "0", max: "750", label: "depth km" },
     ];
 
     function addRow(values) {
@@ -298,13 +301,14 @@
       COLUMNS.forEach(function (col) {
         var td = document.createElement("td");
         var input = document.createElement("input");
-        input.type = "number";
-        input.step = col.step;
-        input.min = col.min;
-        input.max = col.max;
+        input.type = col.type;
+        if (col.step) { input.step = col.step; }
+        if (col.min !== undefined) { input.min = col.min; }
+        if (col.max !== undefined) { input.max = col.max; }
         input.dataset.key = col.key;
-        input.value = values ? values[col.key] : "";
-        input.setAttribute("aria-label", col.key);
+        input.value = values && values[col.key] !== undefined ? values[col.key] : "";
+        input.setAttribute("aria-label", col.label);
+        input.addEventListener("input", function () { input.classList.remove("is-bad"); });
         td.appendChild(input);
         tr.appendChild(td);
       });
@@ -318,63 +322,232 @@
       last.appendChild(del);
       tr.appendChild(last);
       el.rows.appendChild(tr);
+      return tr;
     }
 
-    function loadExample(ex) {
+    /* The panel opens on a real sequence from the test partition, shipped in
+       the bundle so its epicentre and its foreshocks necessarily agree. The
+       dropdown of recorded sequences it replaces could pair the two from
+       different places, and in one case put an epicentre 600 km from its own
+       foreshocks. */
+    function seedTable() {
+      var seed = bundle && bundle.seed;
+      if (!seed) { addRow(null); addRow(null); addRow(null); return; }
       el.rows.innerHTML = "";
-      ex.events.forEach(function (e) {
-        addRow({ before: e.before.toFixed(2), mag: e.mag, lat: e.lat, lon: e.lon, depth: e.depth });
-      });
-      el.lat.value = ex.epicentre[0];
-      el.lon.value = ex.epicentre[1];
-      if (ex.iso) { el.when.value = ex.iso; }
-      section.dataset.actual = ex.actual;
+      seed.events.forEach(function (e) { addRow(e); });
+      el.lat.value = seed.lat;
+      el.lon.value = seed.lon;
+      el.when.value = seed.when;
       setMsg("");
+      showFault();
+    }
+
+    /* ---- validation ------------------------------------------------------
+     *
+     * Three separate failures used to reach the same forecast. A row with some
+     * fields blank was dropped silently, so the model ran on less data than the
+     * reader believed they had supplied. A magnitude of 12, or of 0, or a date
+     * in the future, was accepted and forecast. And a window whose events were
+     * nowhere near each other in space or time was treated as a foreshock
+     * sequence because nothing checked that it was one.
+     *
+     * Every one of those now stops the forecast and says which field is wrong.
+     * A refusal is a better answer than a number that cannot mean anything.
+     */
+    var LIMITS = {
+      mag: { lo: 1.0, hi: 10.0, name: "Magnitude",
+             note: "The catalogue runs from M 1.3 to M 8.3. No earthquake has "
+                 + "ever been recorded above M 9.5." },
+      lat: { lo: 0.0, hi: 25.0, name: "Latitude",
+             note: "The study region is 0 to 25 degrees north." },
+      lon: { lo: 110.0, hi: 140.0, name: "Longitude",
+             note: "The study region is 110 to 140 degrees east." },
+      depth: { lo: 0.0, hi: 750.0, name: "Depth",
+               note: "Hypocentres run from the surface to 750 km." },
+    };
+
+    function parseStamp(value) {
+      if (!value) { return NaN; }
+      /* datetime-local has no zone. The catalogue is in UTC, and reading a
+         bulletin time as local would shift every elapsed day by the reader's
+         own offset, so the Z is explicit. */
+      var iso = value.length === 16 ? value + ":00Z" : value.replace(" ", "T") + "Z";
+      return Date.parse(iso);
+    }
+
+    function daysFromStamp(ms) {
+      var origin = Date.parse(catalogue.origin);
+      return (ms - origin) / 86400000;
+    }
+
+    function mark(input) {
+      if (input) { input.classList.add("is-bad"); }
     }
 
     /**
-     * Read the event table, separating three cases that were previously one.
+     * Read the event table and refuse anything that cannot be a foreshock.
      *
-     * An entirely empty row is an unused slot from Add event and is ignored
-     * quietly. A row with some fields filled and others blank is almost
-     * certainly a mistake, and was previously dropped in silence: the forecast
-     * ran on the remaining rows and never mentioned that an event the user
-     * believed they had entered was excluded. Those rows are now reported and
-     * marked, because a forecast computed on less data than the operator thinks
-     * they supplied is the worst kind of wrong answer.
+     * Returns {events, errors}. `events` carries `before` in days, computed
+     * from each row's own timestamp rather than typed in, and is sorted
+     * chronologically whatever order the rows were entered in.
      */
-    function readEvents() {
-      var complete = [], partial = [];
-      Array.prototype.forEach.call(el.rows.querySelectorAll("tr"), function (tr) {
-        var row = {}, filled = 0, blank = 0;
-        var inputs = tr.querySelectorAll("input");
-        Array.prototype.forEach.call(inputs, function (input) {
-          input.classList.remove("is-bad");
-          var raw = input.value.trim();
-          var v = parseFloat(raw);
-          if (raw === "" || !isFinite(v)) { blank += 1; } else { filled += 1; }
-          row[input.dataset.key] = v;
+    function readEvents(tEndMs) {
+      var events = [], errors = [], seen = {};
+      Array.prototype.forEach.call(el.rows.querySelectorAll("tr"), function (tr, i) {
+        var inputs = {}, blank = 0, filled = 0;
+        Array.prototype.forEach.call(tr.querySelectorAll("input"), function (input) {
+          inputs[input.dataset.key] = input;
+          if (input.value.trim() === "") { blank += 1; } else { filled += 1; }
         });
-        if (blank === 0) {
-          complete.push(row);
-        } else if (filled > 0) {
-          partial.push(tr);
-          Array.prototype.forEach.call(inputs, function (input) {
-            if (input.value.trim() === "" || !isFinite(parseFloat(input.value))) {
-              input.classList.add("is-bad");
-            }
+        if (filled === 0) { return; }                 // an untouched spare row
+        var where = "Row " + (i + 1);
+        if (blank > 0) {
+          Object.keys(inputs).forEach(function (k) {
+            if (inputs[k].value.trim() === "") { mark(inputs[k]); }
           });
+          errors.push(where + " is incomplete. Every column is needed: an event "
+            + "missing its time or its coordinates cannot be placed in the window.");
+          return;
         }
+
+        var ms = parseStamp(inputs.at.value);
+        if (!isFinite(ms)) {
+          mark(inputs.at);
+          errors.push(where + ": the date and time could not be read.");
+          return;
+        }
+        var row = { at: ms };
+        var bad = false;
+        ["mag", "lat", "lon", "depth"].forEach(function (key) {
+          var v = parseFloat(inputs[key].value);
+          var lim = LIMITS[key];
+          if (!isFinite(v)) {
+            mark(inputs[key]);
+            errors.push(where + ": " + lim.name.toLowerCase() + " is not a number.");
+            bad = true;
+            return;
+          }
+          if (v < lim.lo || v > lim.hi) {
+            mark(inputs[key]);
+            errors.push(where + ": " + lim.name + " " + v + " is outside "
+              + lim.lo + " to " + lim.hi + ". " + lim.note);
+            bad = true;
+            return;
+          }
+          row[key] = v;
+        });
+        if (bad) { return; }
+
+        if (ms >= tEndMs) {
+          mark(inputs.at);
+          errors.push(where + " is at or after the forecast moment. A foreshock "
+            + "precedes the earthquake it is a foreshock of.");
+          return;
+        }
+        var before = (tEndMs - ms) / 86400000;
+        if (before > bundle.window_days) {
+          mark(inputs.at);
+          errors.push(where + " is " + before.toFixed(1) + " days before the forecast "
+            + "moment, outside the " + bundle.window_days + "-day observation window "
+            + "the models were trained on.");
+          return;
+        }
+        var key = ms + "|" + row.lat.toFixed(2) + "|" + row.lon.toFixed(2);
+        if (seen[key]) {
+          mark(inputs.at);
+          errors.push(where + " repeats the event in row " + seen[key]
+            + ": same time, same place. One earthquake counted twice inflates "
+            + "the event count and the energy release.");
+          return;
+        }
+        seen[key] = i + 1;
+        row.before = before;
+        row.input = inputs;
+        events.push(row);
       });
-      return { events: complete, partial: partial };
+      events.sort(function (a, b) { return a.at - b.at; });
+      return { events: events, errors: errors };
     }
 
-    /* ---- running it ------------------------------------------------------ */
-    function daysFromDate(value) {
-      var origin = Date.parse(catalogue.origin);
-      var target = Date.parse(value + "T00:00:00Z");
-      if (!isFinite(target)) { return null; }
-      return (target - origin) / 86400000;
+    /**
+     * Do these events look like a foreshock sequence at all?
+     *
+     * The models were fitted on windows drawn by Maeda's method: events close
+     * enough in space and time to belong to one sequence, and all smaller than
+     * the earthquake they precede. Nothing stopped a reader entering eight
+     * unrelated tremors from opposite ends of the country and receiving a
+     * confident number back. These checks apply the same conditions to typed
+     * input that the training data had to satisfy.
+     *
+     * Hirose et al. (2021), Equations 1 and 2: an event of magnitude Mpre
+     * draws a window of L km and ta days around itself.
+     */
+    function maedaWindow(mag) {
+      return {
+        L: Math.pow(10, 0.5 * mag - 1.8),
+        ta: Math.pow(10, (0.17 + 0.85 * (mag - 4.0)) / 1.3) - 0.3,
+      };
+    }
+
+    function plausibility(events, lat, lon) {
+      var errors = [], warnings = [];
+      if (events.length < bundle.min_foreshocks) {
+        errors.push("At least " + bundle.min_foreshocks + " complete events are needed. "
+          + "A b-value cannot be fitted to fewer, and every model in the paper was "
+          + "trained on windows holding at least that many.");
+        return { errors: errors, warnings: warnings };
+      }
+
+      var far = events.filter(function (e) {
+        return Forecast.haversineKm(lat, lon, e.lat, e.lon) > bundle.radius_km;
+      });
+      if (far.length) {
+        far.forEach(function (e) { mark(e.input.lat); mark(e.input.lon); });
+        errors.push(far.length + (far.length === 1 ? " event lies" : " events lie")
+          + " more than " + bundle.radius_km + " km from the epicentre you entered, "
+          + "outside the observation window. Either the epicentre is wrong or those "
+          + "events belong to a different sequence.");
+      }
+
+      /* The largest event in the window sets a floor. A mainshock is by
+         definition the largest earthquake of its sequence, which is the rule
+         the training set was rebuilt to honour, so a window already holding an
+         M 6.5 is not a foreshock sequence for anything the model can forecast. */
+      var largest = events.reduce(function (a, e) { return Math.max(a, e.mag); }, -Infinity);
+      if (largest >= 7.0) {
+        events.forEach(function (e) { if (e.mag === largest) { mark(e.input.mag); } });
+        errors.push("The largest event entered is M " + largest.toFixed(1)
+          + ". A mainshock is the largest earthquake of its sequence, so this window "
+          + "would need a mainshock above M " + largest.toFixed(1) + " — beyond the "
+          + "range any of these models can forecast. The training sequences top out "
+          + "at M 7.3.");
+      }
+
+      /* Maeda's own windows, applied to the sequence the reader typed. Every
+         event should fall inside the space-time window of the largest one, or
+         they are not one cluster. */
+      var anchor = events[events.length - 1];
+      var w = maedaWindow(largest);
+      var strays = events.filter(function (e) {
+        return Forecast.haversineKm(anchor.lat, anchor.lon, e.lat, e.lon) > Math.max(w.L, 25)
+          || (anchor.before !== undefined && (e.before - anchor.before) > Math.max(w.ta, 14));
+      });
+      if (strays.length && !far.length) {
+        warnings.push(strays.length + " of the " + events.length + " events sit outside "
+          + "Maeda's space-time window for an M " + largest.toFixed(1) + " precursor ("
+          + w.L.toFixed(0) + " km, " + w.ta.toFixed(1) + " days). They may belong to a "
+          + "different cluster, in which case the features describe two sequences at "
+          + "once and the forecast is weaker than its error bar suggests.");
+      }
+
+      var span = events[events.length - 1].at - events[0].at;
+      if (events.length >= 5 && span < 60000) {
+        warnings.push("All " + events.length + " events fall within a minute of each "
+          + "other. Repeated reports of one earthquake, relocated, look like this; the "
+          + "catalogue collapses pairs within one second and one kilometre, and a "
+          + "sequence this tight is worth checking against the bulletin.");
+      }
+      return { errors: errors, warnings: warnings };
     }
 
     function classify(m) {
@@ -392,43 +565,93 @@
       el.readout.appendChild(p);
     }
 
-    function run() {
-      setMsg("");
-      var read = readEvents();
-      var events = read.events;
-      if (read.partial.length) {
-        setMsg(read.partial.length + (read.partial.length === 1 ? " row is" : " rows are")
-          + " incomplete. Fill the highlighted fields or remove the row, otherwise the "
-          + "event is left out of the forecast.", true);
-        return;
-      }
-      if (events.length < bundle.min_foreshocks) {
-        setMsg("The model needs at least " + bundle.min_foreshocks
-          + " complete events in the window. Fill in or remove any partial rows.", true);
-        return;
-      }
+    /* The distance from the epicentre to the nearest mapped active fault,
+       shown as the reader types rather than only after a forecast. The thesis
+       names it as a selected parameter and five of the 27 features summarise
+       it, so it belongs beside the coordinates it is computed from. */
+    function showFault() {
+      if (!el.fault || !bundle) { return; }
       var lat = parseFloat(el.lat.value), lon = parseFloat(el.lon.value);
-      if (!isFinite(lat) || !isFinite(lon)) {
-        setMsg("Enter a latitude and longitude for the sequence.", true);
+      if (!isFinite(lat) || !isFinite(lon)) { el.fault.textContent = ""; return; }
+      var near = Forecast.nearestSource(lat, lon, bundle.sources);
+      if (!isFinite(near.km)) { el.fault.textContent = ""; return; }
+      el.fault.innerHTML = "Nearest mapped active fault: <strong>"
+        + near.km.toFixed(1) + " km</strong>, at " + near.lat.toFixed(2) + " N "
+        + near.lon.toFixed(2) + " E.";
+    }
+
+    /* Rewrite the table in chronological order, oldest first, so the reader
+       sees the sequence the way the model reads it. Entering events out of
+       order is normal when they are copied off a bulletin one at a time, and
+       silently reordering them inside the computation while leaving the screen
+       scrambled makes the two disagree. */
+    function sortTable() {
+      var rows = Array.prototype.slice.call(el.rows.querySelectorAll("tr"));
+      var keyed = rows.map(function (tr, i) {
+        var at = tr.querySelector('input[data-key="at"]');
+        var ms = at ? parseStamp(at.value) : NaN;
+        return { tr: tr, ms: isFinite(ms) ? ms : Infinity, i: i };
+      });
+      keyed.sort(function (a, b) { return a.ms - b.ms || a.i - b.i; });
+      keyed.forEach(function (k) { el.rows.appendChild(k.tr); });
+    }
+
+    function run() {
+      clearBad();
+      setMsg("");
+
+      var tEndMs = parseStamp(el.when.value);
+      if (!isFinite(tEndMs)) {
+        mark(el.when);
+        setMsg("Enter the date and time you are forecasting from.", true);
         return;
       }
-      /* A recorded sequence carries its own mainshock time; only a custom
-         sequence takes the time from the date field. */
-      var tEnd;
-      if (source() === "recorded") {
-        var ex = bundle.examples.filter(function (e) { return e.id === el.pick.value; })[0];
-        if (!ex) { setMsg("Pick a recorded sequence.", true); return; }
-        lat = ex.epicentre[0];
-        lon = ex.epicentre[1];
-        tEnd = ex.t_end;
-      } else {
-        tEnd = daysFromDate(el.when.value);
-      }
-      if (tEnd === null || !isFinite(tEnd)) {
-        setMsg("Enter a valid forecast date.", true);
+      var newest = catalogue.origin
+        ? Date.parse(catalogue.origin) + catalogue.t[catalogue.n - 1] * 86400000 : NaN;
+      if (isFinite(newest) && tEndMs > newest + 86400000) {
+        mark(el.when);
+        setMsg("The forecast moment is after the end of the catalogue ("
+          + new Date(newest).toISOString().slice(0, 10) + "). Four of the 27 features "
+          + "count days since the last large regional earthquake and are read from "
+          + "that record, so there is nothing to read past its end.", true);
         return;
       }
 
+      var lat = parseFloat(el.lat.value), lon = parseFloat(el.lon.value);
+      var bad = false;
+      [["lat", el.lat, lat], ["lon", el.lon, lon]].forEach(function (pair) {
+        var lim = LIMITS[pair[0]];
+        if (!isFinite(pair[2]) || pair[2] < lim.lo || pair[2] > lim.hi) {
+          mark(pair[1]);
+          bad = true;
+        }
+      });
+      if (bad) {
+        setMsg("The epicentre must sit inside the study region: 0 to 25 degrees north, "
+          + "110 to 140 degrees east.", true);
+        return;
+      }
+
+      var read = readEvents(tEndMs);
+      if (read.errors.length) {
+        setMsg(read.errors[0] + (read.errors.length > 1
+          ? "  (" + (read.errors.length - 1) + " more problem"
+            + (read.errors.length > 2 ? "s" : "") + " marked below.)" : ""), true);
+        return;
+      }
+      sortTable();
+
+      var check = plausibility(read.events, lat, lon);
+      if (check.errors.length) {
+        setMsg(check.errors[0] + (check.errors.length > 1
+          ? "  (" + (check.errors.length - 1) + " more marked below.)" : ""), true);
+        return;
+      }
+
+      var tEnd = daysFromStamp(tEndMs);
+      var events = read.events.map(function (e) {
+        return { before: e.before, mag: e.mag, lat: e.lat, lon: e.lon, depth: e.depth };
+      });
       var context = Forecast.regionalContext(catalogue, lat, lon, tEnd, bundle);
       var sorted = events.slice().sort(function (a, b) { return b.before - a.before; });
       var result;
@@ -441,13 +664,29 @@
         setMsg("The forecast could not be computed: " + err.message, true);
         return;
       }
-      var occFeatures = null;
-      try {
-        occFeatures = Forecast.buildFeatures(sorted, context, bundle);
-      } catch (err) {
-        occFeatures = null;
+
+      /* One feature vector per radius, not one shared by all three. Each
+         occurrence model was fitted on events inside its own radius, and
+         feeding the 50 km model a 100 km window is why those rows used to move
+         together even when nothing lay within 50 km. */
+      var occByRadius = {};
+      ((bundle.occurrence && bundle.occurrence.radii) || []).forEach(function (r) {
+        var inside = sorted.filter(function (e) {
+          return Forecast.haversineKm(lat, lon, e.lat, e.lon) <= r;
+        });
+        if (inside.length < bundle.min_foreshocks) { occByRadius[r] = null; return; }
+        try {
+          var ctx = Forecast.regionalContext(catalogue, lat, lon, tEnd, bundle, r);
+          occByRadius[r] = Forecast.buildFeatures(inside, ctx, bundle);
+        } catch (err) {
+          occByRadius[r] = null;
+        }
+      });
+
+      if (check.warnings.length) {
+        setMsg(check.warnings.join("  "), false);
       }
-      render(result, sorted, context, occFeatures, lat, lon);
+      render(result, sorted, context, occByRadius, lat, lon);
     }
 
     /* A magnitude ruler for the readout. The forecast, its error band, the
@@ -526,11 +765,11 @@
       return wrap;
     }
 
-    function render(result, events, context, occFeatures, lat, lon) {
+    function render(result, events, context, occByRadius, lat, lon) {
       var model = bundle.models[chosen];
       var m = result.magnitude;
       var band = classify(m);
-      var actual = source() === "recorded" ? parseFloat(section.dataset.actual) : NaN;
+      var actual = NaN;
 
       el.readout.innerHTML = "";
       var frag = document.createDocumentFragment();
@@ -547,15 +786,34 @@
       frag.appendChild(head);
 
       var largest = Math.max.apply(null, events.map(function (e) { return e.mag; }));
+      var ev = bundle.evidence || {};
+      var nSeq = (ev.cleaning && ev.cleaning.length)
+        ? ev.cleaning[ev.cleaning.length - 1].n.toLocaleString() : "the";
+      /* Read from the measured table, never typed: the page used to quote a
+         23.6% improvement that the results had long since replaced with 11.4%,
+         and an evaluator caught it. */
+      var cover = (ev.spread || []).filter(function (r) {
+        return r.model === model.label && r.band.indexOf("All") === 0;
+      })[0];
+      var hiBand = (ev.spread || []).filter(function (r) {
+        return r.model === model.label && r.band.indexOf("7.0") !== -1;
+      })[0];
 
       var kv = document.createElement("div");
       kv.className = "kv";
+      var near = Forecast.nearestSource(lat, lon, bundle.sources);
       var items = [
         ["Model", model.label],
         ["Skill vs. average", (model.skill > 0 ? "+" : "") + model.skill.toFixed(1) + "%"],
         ["Events in window", String(events.length)],
         ["Largest foreshock", "M " + largest.toFixed(1)],
       ];
+      if (isFinite(near.km)) {
+        items.push(["Nearest active fault", near.km.toFixed(1) + " km"]);
+      }
+      if (result.spread && isFinite(result.spread.hi)) {
+        items.push(["Ensemble 90th percentile", "M " + result.spread.hi.toFixed(2)]);
+      }
       if (result.raw) {
         var bIdx = bundle.features.indexOf("b_mlk");
         var b = result.raw[bIdx];
@@ -592,11 +850,34 @@
         gap.className = "caution";
         gap.innerHTML = "<strong>This forecast is below the largest foreshock, which means the model under-forecast.</strong> "
           + "A mainshock is the largest earthquake of its sequence, so M "
-          + largest.toFixed(1) + " is the floor this sequence sets. All 166 recorded "
-          + "sequences obey that rule, every foreshock strictly smaller than the "
-          + "mainshock it precedes. Treat M " + largest.toFixed(1) + " as the lower "
-          + "bound here, or switch to Extra Trees.";
+          + largest.toFixed(1) + " is the floor this sequence sets. Every one of the "
+          + nSeq + " recorded sequences obeys that rule, each foreshock strictly "
+          + "smaller than the mainshock it precedes. Treat M " + largest.toFixed(1)
+          + " as the lower bound here.";
         frag.appendChild(gap);
+      }
+
+      /* The point forecast is the mean over the ensemble's trees, and a mean
+         fitted under squared error shrinks toward the training average. That
+         shrinkage is measured in the paper: near zero in the M 5.0 to 5.4 band
+         and about one and a half magnitude units above M 7.0. Quoting the
+         spread of the trees alongside the mean is the honest way to say so
+         without pretending the model can reach a number it cannot. */
+      if (result.spread && isFinite(result.spread.hi)) {
+        var sp = document.createElement("p");
+        sp.className = "prob__note";
+        sp.innerHTML = "The " + result.spread.n + " trees in this ensemble forecast "
+          + "between M " + result.spread.lo.toFixed(2) + " and M "
+          + result.spread.hi.toFixed(2) + " across their middle eighty percent, and "
+          + "the headline is their mean. A mean fitted under squared error pulls "
+          + "toward the training average, so for a genuinely large sequence the "
+          + "ninetieth percentile is the more useful figure."
+          + (cover ? " On the test partition it covers the observed magnitude in "
+              + cover.covered.toFixed(0) + "% of cases overall" : "")
+          + (hiBand ? ", and in " + hiBand.covered.toFixed(0) + "% of the "
+              + hiBand.n + " sequences above M 7.0. The model does not reach that "
+              + "far, and this page will not claim it does." : ".");
+        frag.appendChild(sp);
       }
 
       /* Occurrence probability. This answers a different question from the
@@ -605,11 +886,11 @@
          this and beat the historical rate in one cell of nine, so what is shown
          is the rate itself, with the model's measured result stated rather than
          implied. */
-      var mapPanel = buildMap(events, lat, lon, bundle.occurrence, occFeatures);
+      var mapPanel = buildMap(events, lat, lon, bundle.occurrence, occByRadius);
       frag.appendChild(mapPanel);
 
       if (bundle.occurrence && bundle.occurrence.cells) {
-        frag.appendChild(buildProbability(bundle.occurrence, occFeatures));
+        frag.appendChild(buildProbability(bundle.occurrence, occByRadius));
       } else {
         var stale = document.createElement("p");
         stale.className = "prob prob__note";
@@ -654,7 +935,7 @@
      * they show exactly where the record has coverage. Drawn on canvas so the
      * 200 km view and the whole-country inset cost one element between them.
      */
-    function buildMap(events, lat, lon, occ, raw) {
+    function buildMap(events, lat, lon, occ, occByRadius) {
       var wrap = document.createElement("div");
       wrap.className = "map";
 
@@ -673,6 +954,7 @@
         '<span><i style="background:var(--good)"></i>foreshocks you entered</span>'
         + '<span><i style="background:var(--accent)"></i>forecast epicentre</span>'
         + '<span><i style="background:var(--line-2)"></i>catalogued seismicity</span>'
+        + '<span><i style="background:var(--fault)"></i>mapped active faults</span>'
         + "<span>rings: 50, 100 and 200 km</span>";
       wrap.appendChild(key);
 
@@ -718,8 +1000,76 @@
         }
         ctx.globalAlpha = 1;
 
-        /* Radius rings, each labelled with this sequence's probability. */
         var centre = px(lat, lon);
+
+        /* The mapped active faults the thesis measures every distance against.
+           The supplied file is a vertex dump rather than a connected polyline,
+           so the export breaks a trace wherever consecutive vertices are more
+           than 40 km apart; joining every pair would paint fault strands
+           straight across the archipelago. */
+        var traces = (bundle.sources && bundle.sources.traces) || [];
+        ctx.strokeStyle = token("--fault") || "#3b6ea5";
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = "round";
+        ctx.globalAlpha = 0.78;
+        traces.forEach(function (trace) {
+          var drawn = false;
+          ctx.beginPath();
+          for (var k = 0; k < trace.length; k++) {
+            var dLa = trace[k][0] - lat;
+            if (dLa < -halfLat * 1.5 || dLa > halfLat * 1.5) { drawn = false; continue; }
+            var q = px(trace[k][0], trace[k][1]);
+            if (q[0] < -200 || q[0] > W + 200) { drawn = false; continue; }
+            if (drawn) { ctx.lineTo(q[0], q[1]); } else { ctx.moveTo(q[0], q[1]); }
+            drawn = true;
+          }
+          ctx.stroke();
+        });
+        ctx.globalAlpha = 1;
+
+        /* The distance to the nearest fault, drawn as the leader line the
+           authors' evaluator asked to see rather than only stated as a
+           number. */
+        var near = Forecast.nearestSource(lat, lon, bundle.sources);
+        if (isFinite(near.km)) {
+          var fp = px(near.lat, near.lon);
+          ctx.strokeStyle = token("--fault") || "#3b6ea5";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(centre[0], centre[1]);
+          ctx.lineTo(fp[0], fp[1]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(fp[0], fp[1], 2.6, 0, Math.PI * 2);
+          ctx.fillStyle = token("--fault") || "#3b6ea5";
+          ctx.fill();
+          /* The label sits at the fault end of the leader, not its midpoint:
+             a midpoint lands among the ring labels and buries the 50 km one. */
+          var dx = fp[0] - centre[0], dy = fp[1] - centre[1];
+          var len = Math.max(Math.hypot(dx, dy), 1);
+          var text = near.km.toFixed(1) + " km to fault";
+          ctx.font = "10px 'IBM Plex Mono', monospace";
+          ctx.textBaseline = "middle";
+          ctx.textAlign = dx < 0 ? "left" : "right";
+          var pad = 3, tw = ctx.measureText(text).width;
+          var lx = fp[0] + (dx / len) * 6, ly = fp[1] + (dy / len) * 6 - 9;
+          /* Keep it on the canvas when the fault sits near an edge. */
+          var half = ctx.textAlign === "left" ? 0 : tw;
+          lx = Math.min(Math.max(lx, half + pad + 2), W - (tw - half) - pad - 2);
+          ctx.fillStyle = token("--surface");
+          ctx.globalAlpha = 0.88;
+          ctx.fillRect(lx - (ctx.textAlign === "left" ? pad : tw + pad), ly - 7,
+                       tw + 2 * pad, 14);
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = token("--fault") || "#3b6ea5";
+          ctx.fillText(text, lx, ly);
+        }
+
+        /* Radius rings, each labelled with this sequence's probability. A ring
+           with no model estimate says so rather than borrowing the figure from
+           a wider ring, which is what it used to do. */
         var models = (occ && occ.models) || {};
         [200, 100, 50].forEach(function (km) {
           var rpx = (km / 111.32) * scale;
@@ -735,17 +1085,32 @@
 
           var label = km + " km";
           var m = models[km + "|5"];
-          if (m && raw) {
-            var pr = Forecast.occurrenceProbability(m, occ.feature_names, raw);
+          var rawR = occByRadius ? occByRadius[km] : null;
+          if (m && rawR) {
+            var pr = Forecast.occurrenceProbability(m, occ.feature_names, rawR);
             if (pr !== null && isFinite(pr)) {
               label += "  " + (100 * pr).toFixed(0) + "%";
             }
+          } else if (occByRadius && Object.prototype.hasOwnProperty.call(occByRadius, km)) {
+            label += "  no events";
           }
-          ctx.fillStyle = token("--mute");
+          /* Below each ring, not above it. The whole-country inset occupies the
+             top right and the fault leader usually runs up or sideways, so the
+             space under the ring is the one reliably free of both. An opaque
+             backing keeps the label legible where it crosses the catalogue
+             backdrop. */
           ctx.font = "10px 'IBM Plex Mono', monospace";
           ctx.textAlign = "center";
-          ctx.textBaseline = "bottom";
-          ctx.fillText(label, centre[0], centre[1] - rpx - 3);
+          ctx.textBaseline = "middle";
+          var ly = centre[1] + rpx + 9;
+          if (ly > H - 6) { ly = centre[1] - rpx - 9; }
+          var tw = ctx.measureText(label).width;
+          ctx.fillStyle = token("--surface");
+          ctx.globalAlpha = 0.85;
+          ctx.fillRect(centre[0] - tw / 2 - 3, ly - 7, tw + 6, 14);
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = token("--mute");
+          ctx.fillText(label, centre[0], ly);
         });
 
         /* Foreshocks, sized by magnitude. */
@@ -810,12 +1175,16 @@
       return wrap;
     }
 
-    function buildProbability(occ, raw) {
+    function buildProbability(occ, occByRadius) {
       var wrap = document.createElement("div");
       wrap.className = "prob";
 
       var models = occ.models || {};
-      var anyModel = raw && Object.keys(models).length > 0;
+      var anyModel = occByRadius && Object.keys(models).length > 0
+        && occ.radii.some(function (r) { return occByRadius[r]; });
+      var thinRadii = (occ.radii || []).filter(function (r) {
+        return occByRadius && !occByRadius[r];
+      });
 
       var head = document.createElement("div");
       head.className = "prob__h";
@@ -850,8 +1219,12 @@
               ? cell.block_moe : cell.moe;
             var thin = cell.positives < 25;
             var model = models[r + "|" + t];
-            var fitted = (raw && model)
-              ? Forecast.occurrenceProbability(model, occ.feature_names, raw) : null;
+            /* One feature vector per radius. Feeding the 50 km model a window
+               computed at 100 km made all three rows move together even when
+               nothing the reader entered lay within 50 km of the epicentre. */
+            var rawR = occByRadius ? occByRadius[r] : null;
+            var fitted = (rawR && model)
+              ? Forecast.occurrenceProbability(model, occ.feature_names, rawR) : null;
 
             if (fitted !== null && fitted !== undefined && isFinite(fitted)) {
               /* A model earned its place in this cell, so the headline is its
@@ -899,7 +1272,14 @@
           + "radius. No model beat the rate for M 6.0 or above, so those columns show the "
           + "historical frequency with its margin of error at " + conf + "% confidence, from "
           + "a bootstrap resampling whole years rather than individual anchors. Hover any "
-          + "cell for the detail. Starred values rest on fewer than 25 historical cases.";
+          + "cell for the detail. Starred values rest on fewer than 25 historical cases."
+          + (thinRadii.length
+              ? " The " + thinRadii.join(" and ") + " km row" + (thinRadii.length > 1
+                  ? "s hold" : " holds") + " fewer than " + bundle.min_foreshocks
+                + " of your events, so " + (thinRadii.length > 1 ? "they fall" : "it falls")
+                + " back to the historical rate: each radius is a separately trained "
+                + "model and none of them may be fed a window it was not trained on."
+              : "");
         wrap.appendChild(note);
         return wrap;
       }
@@ -923,19 +1303,157 @@
       return wrap;
     }
 
-    /* ---- wiring ---------------------------------------------------------- */
-    Array.prototype.forEach.call(document.querySelectorAll('input[name="source"]'), function (input) {
-      input.addEventListener("change", function () {
-        var custom = source() === "custom";
-        el.customWrap.hidden = !custom;
-        el.pickWrap.hidden = custom;
-        if (!custom && bundle) {
-          var ex = bundle.examples.filter(function (e) { return e.id === el.pick.value; })[0];
-          if (ex) { loadExample(ex); }
-        }
-        setMsg("");
+    /* ---- reading a sequence out of a spreadsheet -------------------------
+     *
+     * Typing eight events by hand to check one sequence is the kind of work
+     * that makes a reader stop checking. A .csv is parsed here; a .xlsx is a
+     * zip of XML and parsing one would mean shipping a library, so the panel
+     * says what it accepts instead of failing silently on the wrong file.
+     *
+     * Column names are matched loosely, because a bulletin exported from Excel
+     * will not use these exact words. Nothing is guessed about which column is
+     * which: if a required one is missing the import is refused and names the
+     * one it could not find.
+     */
+    var FIELD_ALIASES = {
+      at: ["date and time", "date time", "datetime", "origin time", "date - time",
+           "date and time parameter", "when", "time", "date"],
+      mag: ["magnitude", "mag", "m", "magnitude parameter", "mw", "ms", "mb", "ml"],
+      lat: ["latitude", "lat", "lat n", "latitude n", "lat (n)"],
+      lon: ["longitude", "lon", "long", "lon e", "longitude e", "long (e)"],
+      depth: ["depth", "depth km", "depth (km)", "depth parameter"],
+    };
+
+    function splitCsvLine(line) {
+      var out = [], cur = "", quoted = false;
+      for (var i = 0; i < line.length; i++) {
+        var ch = line[i];
+        if (quoted) {
+          if (ch === '"' && line[i + 1] === '"') { cur += '"'; i += 1; }
+          else if (ch === '"') { quoted = false; }
+          else { cur += ch; }
+        } else if (ch === '"') { quoted = true; }
+        else if (ch === "," || ch === "\t" || ch === ";") { out.push(cur); cur = ""; }
+        else { cur += ch; }
+      }
+      out.push(cur);
+      return out.map(function (v) { return v.trim(); });
+    }
+
+    /* Headers come off a bulletin, not out of a schema, so "Date - Time",
+       "Date and Time Parameter" and "origin_time" all have to land on the same
+       field. Comparison is on letters and digits alone, which collapses the
+       punctuation and spacing a spreadsheet export invents. */
+    function squash(text) {
+      return String(text).toLowerCase().replace(/[^a-z0-9]+/g, "");
+    }
+
+    function matchColumns(header) {
+      var keys = header.map(squash);
+      var map = {}, taken = {};
+      function claim(key, at) {
+        if (at === -1 || taken[at]) { return false; }
+        map[key] = at;
+        taken[at] = true;
+        return true;
+      }
+      /* Exact matches first, across every field, so a header that names one
+         field exactly is never stolen by another field's prefix rule. */
+      Object.keys(FIELD_ALIASES).forEach(function (key) {
+        FIELD_ALIASES[key].some(function (alias) {
+          return claim(key, keys.indexOf(squash(alias)));
+        });
       });
-    });
+      Object.keys(FIELD_ALIASES).forEach(function (key) {
+        if (map[key] !== undefined) { return; }
+        FIELD_ALIASES[key].some(function (alias) {
+          var want = squash(alias);
+          var at = -1;
+          for (var i = 0; i < keys.length; i++) {
+            if (keys[i].indexOf(want) !== -1 && !taken[i]) { at = i; break; }
+          }
+          return claim(key, at);
+        });
+      });
+      return map;
+    }
+
+    function normaliseStamp(value) {
+      var v = String(value).trim();
+      if (!v) { return ""; }
+      /* "2021-08-27 10:22:23" and "2021-08-27T10:22" both become the value a
+         datetime-local input accepts; anything else is handed back unchanged
+         so the row fails validation visibly rather than being dropped. */
+      var m = v.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})[ T]+(\d{1,2}):(\d{2})/);
+      if (m) {
+        var pad = function (x) { return String(x).length < 2 ? "0" + x : String(x); };
+        return m[1] + "-" + pad(m[2]) + "-" + pad(m[3]) + "T" + pad(m[4]) + ":" + m[5];
+      }
+      var d = Date.parse(v.indexOf("T") === -1 ? v.replace(" ", "T") : v);
+      return isFinite(d) ? new Date(d).toISOString().slice(0, 16) : v;
+    }
+
+    function importCsv(text) {
+      var lines = text.split(/\r?\n/).filter(function (l) { return l.trim() !== ""; });
+      if (lines.length < 2) {
+        return { error: "The file has no data rows under its header." };
+      }
+      var header = splitCsvLine(lines[0]);
+      var map = matchColumns(header);
+      var missing = ["at", "mag", "lat", "lon", "depth"].filter(function (k) {
+        return map[k] === undefined;
+      });
+      if (missing.length) {
+        return { error: "Could not find a column for " + missing.join(", ")
+          + ". The header read: " + header.join(", ") + "." };
+      }
+      var rows = [];
+      for (var i = 1; i < lines.length; i++) {
+        var cells = splitCsvLine(lines[i]);
+        rows.push({
+          at: normaliseStamp(cells[map.at]),
+          mag: cells[map.mag], lat: cells[map.lat],
+          lon: cells[map.lon], depth: cells[map.depth],
+        });
+      }
+      return { rows: rows };
+    }
+
+    function handleUpload(file) {
+      if (!file) { return; }
+      if (/\.xlsx?$/i.test(file.name)) {
+        el.uploadNote.textContent = "An .xlsx file is a zipped XML workbook and this "
+          + "page carries no library to open one. Save it as CSV from Excel "
+          + "(File, Save As, CSV UTF-8) and upload that.";
+        el.uploadNote.className = "help msg--error";
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var parsed = importCsv(String(reader.result));
+        if (parsed.error) {
+          el.uploadNote.textContent = parsed.error;
+          el.uploadNote.className = "help msg--error";
+          return;
+        }
+        el.rows.innerHTML = "";
+        parsed.rows.forEach(function (r) { addRow(r); });
+        sortTable();
+        el.uploadNote.textContent = parsed.rows.length + " row"
+          + (parsed.rows.length === 1 ? "" : "s") + " read from " + file.name
+          + ". Check the epicentre and the forecast moment above, then press Forecast; "
+          + "every row is validated the same way a typed one is.";
+        el.uploadNote.className = "help";
+        setMsg("");
+      };
+      reader.onerror = function () {
+        el.uploadNote.textContent = "The file could not be read.";
+        el.uploadNote.className = "help msg--error";
+      };
+      reader.readAsText(file);
+    }
+
+    /* ---- wiring ---------------------------------------------------------- */
     document.getElementById("addRow").addEventListener("click", function () {
       if (!bundle) { return; }
       addRow(null);
@@ -943,6 +1461,21 @@
     document.getElementById("run").addEventListener("click", function () {
       if (!bundle) { setMsg("Still loading the models.", false); return; }
       run();
+    });
+    var sortBtn = document.getElementById("sortRows");
+    if (sortBtn) {
+      sortBtn.addEventListener("click", function () {
+        sortTable();
+        setMsg("Events reordered oldest first.", false);
+      });
+    }
+    if (el.upload) {
+      el.upload.addEventListener("change", function () {
+        handleUpload(el.upload.files && el.upload.files[0]);
+      });
+    }
+    [el.lat, el.lon].forEach(function (input) {
+      if (input) { input.addEventListener("input", showFault); }
     });
 
     /* Load when the section comes into view, so the first screen stays light.
@@ -969,4 +1502,150 @@
     window.addEventListener("hashchange", function () {
       if (window.location.hash === "#lab") { begin(); }
     });
+  })();
+
+  /* =======================================================================
+     Evidence panels.
+
+     Every figure on this page used to be typed into the markup by hand, and
+     when the data set changed the prose went on quoting the old one. A thesis
+     evaluator caught exactly that: the copy claimed a 23.6% improvement while
+     the results table said 11.4%. These panels are filled at run time from the
+     same bundle the forecaster uses, which is written by the pipeline from its
+     own output tables, so a number can only be wrong here if it is wrong
+     everywhere.
+     ======================================================================= */
+  (function () {
+    var targets = ["evidenceCleaning", "evidenceWindows", "evidenceScales",
+                   "evidenceFeatures", "evidenceMetrics", "evidenceBands",
+                   "evidenceSupport", "evidenceCase"];
+    if (!targets.some(function (id) { return document.getElementById(id); })) { return; }
+
+    function el(id) { return document.getElementById(id); }
+
+    function rows(target, data, build) {
+      var node = el(target);
+      if (!node || !data || !data.length) { return; }
+      node.innerHTML = "";
+      data.forEach(function (d, i) {
+        var tr = document.createElement("tr");
+        tr.innerHTML = build(d, i);
+        node.appendChild(tr);
+      });
+    }
+
+    function num(v, dp) {
+      return (v === null || v === undefined || !isFinite(v)) ? "" : v.toFixed(dp);
+    }
+
+    function paint(ev) {
+      /* --- the cleaning funnel, as proportional bars --------------------- */
+      var funnel = el("evidenceCleaning");
+      if (funnel && ev.cleaning && ev.cleaning.length) {
+        /* Square-root widths, like the figure: the last stage is a hundredth
+           of the first and a linear bar for it would be invisible. The count
+           is printed on every row, so the bar is an aid and not the number. */
+        var widest = Math.sqrt(ev.cleaning[0].n);
+        funnel.innerHTML = "";
+        ev.cleaning.forEach(function (stage, i) {
+          var row = document.createElement("div");
+          row.className = "funnel__row" + (i === ev.cleaning.length - 1 ? " is-final" : "");
+          row.innerHTML = '<span class="funnel__label">' + stage.label + "</span>"
+            + '<span class="funnel__bar"><i style="width:'
+            + (100 * Math.sqrt(stage.n) / widest).toFixed(2) + '%"></i>'
+            + '<b>' + stage.n.toLocaleString() + "</b></span>"
+            + '<span class="funnel__note">' + (stage.note || "") + "</span>";
+          funnel.appendChild(row);
+        });
+      }
+
+      rows("evidenceWindows", ev.maeda_windows, function (w) {
+        return "<td>M " + w.mpre.toFixed(1) + "</td><td>" + w.l_km.toFixed(1)
+          + "</td><td>" + w.ta_days.toFixed(1) + "</td><td>M "
+          + w.cutoff.toFixed(1) + "</td>";
+      });
+
+      rows("evidenceScales", ev.scales, function (s) {
+        /* The full description lives in the prose beside this table; the
+           column is too narrow to hold a sentence without wrapping to four
+           lines and crowding the counts out. */
+        return "<td>" + s.rank + '</td><td title="' + s.measures + '"><strong>'
+          + s.scale + "</strong>" + '<span class="moe">' + (s.short || "")
+          + '</span></td><td style="text-align:right">' + s.reported.toLocaleString()
+          + '</td><td style="text-align:right">' + s.adopted.toLocaleString()
+          + '<span class="moe">' + s.pct.toFixed(1) + "%</span></td>";
+      });
+
+      /* --- the 27 features, with how much each one actually moves a forecast */
+      if (ev.features) {
+        var weight = {};
+        (ev.shap || []).forEach(function (r) { weight[r.feature] = r.mean_abs; });
+        rows("evidenceFeatures", ev.features, function (f) {
+          var w = weight[f.name];
+          return "<td><code>" + f.name + "</code></td><td class=\"thin\">"
+            + (f.category || "") + "</td><td>" + (f.description || "")
+            + '</td><td style="text-align:right" class="' + (w ? "v" : "thin") + '">'
+            + (w ? w.toFixed(3) : "&mdash;") + "</td>";
+        });
+      }
+
+      rows("evidenceMetrics", ev.leaderboard, function (m) {
+        var skill = (m.skill > 0 ? "+" : "") + m.skill.toFixed(1) + "%";
+        return "<td>" + m.model
+          + (m.baseline ? " <span class=\"thin\">reference, not a model</span>" : "")
+          + '</td><td style="text-align:right">' + m.rmse.toFixed(3)
+          + '</td><td style="text-align:right">' + m.mse.toFixed(3)
+          + '</td><td style="text-align:right">' + m.mae.toFixed(3)
+          + '</td><td style="text-align:right">' + m.r2.toFixed(3)
+          + '</td><td style="text-align:right" class="thin">' + m.ci
+          + '</td><td style="text-align:right" class="' + (m.skill > 0 ? "accent" : "")
+          + '">' + (m.baseline ? "0.0%" : skill) + "</td>";
+      });
+      /* The class belongs on the row, which innerHTML on a <tr> cannot set. */
+      var metrics = el("evidenceMetrics");
+      if (metrics && ev.leaderboard) {
+        Array.prototype.forEach.call(metrics.querySelectorAll("tr"), function (tr, i) {
+          var m = ev.leaderboard[i];
+          if (!m) { return; }
+          tr.className = m.baseline ? "is-ref" : (i === 0 ? "is-top" : "");
+        });
+      }
+
+      var lead = (ev.bands || []).filter(function (b) { return b.model === "Extra Trees"; });
+      rows("evidenceBands", lead, function (b) {
+        return "<td>" + b.band + '</td><td style="text-align:right">' + b.n
+          + '</td><td style="text-align:right">M ' + b.forecast.toFixed(2)
+          + '</td><td style="text-align:right" class="' + (b.bias < -0.3 ? "accent" : "")
+          + '">' + (b.bias > 0 ? "+" : "") + b.bias.toFixed(2) + "</td>";
+      });
+
+      rows("evidenceSupport", ev.support, function (sup) {
+        return "<td>" + sup.band + '</td><td style="text-align:right">' + sup.train
+          + '</td><td style="text-align:right">' + sup.val
+          + '</td><td style="text-align:right">' + sup.test + "</td>";
+      });
+
+      var block = (ev.shap_cases || [])[0];
+      if (block) {
+        var caption = el("evidenceCase") && el("evidenceCase").closest("table");
+        if (caption && caption.querySelector("caption")) {
+          caption.querySelector("caption").textContent =
+            block.title.replace(/^Case \d+: /, "How one forecast was built. ");
+        }
+        rows("evidenceCase", block.rows, function (r) {
+          var sign = r.shap > 0 ? "+" : "";
+          return "<td>" + (r.value === null ? r.feature
+                  : "<code>" + r.feature + "</code> = " + r.value)
+            + '</td><td style="text-align:right" class="'
+            + (Math.abs(r.shap) > 0.05 ? "v" : "thin") + '">'
+            + (r.feature.indexOf("Base value") === 0 ? "" : sign + r.shap.toFixed(3))
+            + '</td><td style="text-align:right">' + r.running.toFixed(2) + "</td>";
+        });
+      }
+    }
+
+    /* Shares the forecaster's fetch rather than pulling three megabytes twice. */
+    bundlePromise().then(function (b) {
+      if (b && b.evidence) { paint(b.evidence); }
+    }).catch(function () { /* the markup already says what each table holds */ });
   })();

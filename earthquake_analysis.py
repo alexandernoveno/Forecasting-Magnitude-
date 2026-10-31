@@ -1983,6 +1983,241 @@ def magnitude_floor_check(y_true, predictions, mag_max, models) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def magnitude_band_table(y_true, predictions, models, edges=(5.0, 5.5, 6.0, 7.0, 10.0)) -> pd.DataFrame:
+    """Forecast error split by the size of the earthquake that actually arrived.
+
+    An evaluator reported that a recorded M 7.1 came back as M 5.4 and asked for
+    the forecasting capability to be improved.  This table is the measurement
+    behind that observation.  Squared-error training shrinks every forecast
+    toward the conditional mean, and the shrinkage is worst exactly where the
+    training data is thinnest, so the bias column runs from near zero in the
+    crowded M 5.0 to 5.4 band to roughly minus one magnitude unit above M 7.
+    Reporting it per band is the only honest way to describe a model that is
+    useful in the middle of its range and not at the top.
+    """
+    y_true = np.asarray(y_true, float)
+    rows = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        mask = (y_true >= lo) & (y_true < hi)
+        if not mask.any():
+            continue
+        label = f"M {lo:.1f} to {hi - 0.1:.1f}" if hi < 10 else f"M {lo:.1f} and above"
+        for name in models:
+            p = np.asarray(predictions[name], float)[mask]
+            obs = y_true[mask]
+            rows.append({"Observed band": label, "n": int(mask.sum()), "Model": name,
+                         "Mean observed": float(obs.mean()),
+                         "Mean forecast": float(p.mean()),
+                         "Bias (forecast − observed)": float((p - obs).mean()),
+                         "MAE": float(np.abs(p - obs).mean()),
+                         "RMSE": float(np.sqrt(np.mean((p - obs) ** 2)))})
+    return pd.DataFrame(rows)
+
+
+def training_support_table(seq, splits, edges=(5.0, 5.5, 6.0, 7.0, 10.0)) -> pd.DataFrame:
+    """How many sequences each magnitude band contributes to each partition.
+
+    The companion to `magnitude_band_table`: a model cannot learn a band it has
+    barely seen, and this is the count that explains the bias reported there.
+    """
+    y = seq["Target"].to_numpy(float)
+    rows = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        label = f"M {lo:.1f} to {hi - 0.1:.1f}" if hi < 10 else f"M {lo:.1f} and above"
+        band = (y >= lo) & (y < hi)
+        row = {"Magnitude band": label}
+        for part, idx in splits.items():
+            row[f"{part} n"] = int(band[idx].sum())
+        row["Total"] = int(band.sum())
+        row["% of all sequences"] = 100 * float(band.mean())
+        rows.append(row)
+    total = {"Magnitude band": "All sequences"}
+    for part, idx in splits.items():
+        total[f"{part} n"] = int(len(idx))
+    total["Total"] = int(len(y))
+    total["% of all sequences"] = 100.0
+    rows.append(total)
+    return pd.DataFrame(rows)
+
+
+def ensemble_spread(model, X, quantile=0.90) -> dict:
+    """Per-tree forecasts from a forest, summarised.
+
+    A forest's point forecast is the mean over its trees.  The trees disagree,
+    and the spread of that disagreement is information the mean throws away: a
+    sequence the trees cannot agree on is one where the upper tail matters.
+    Returned alongside the mean so the interface can quote an upper figure
+    instead of only the shrunken centre.
+    """
+    if not hasattr(model, "estimators_"):
+        return {}
+    per_tree = np.column_stack([t.predict(X) for t in model.estimators_])
+    return {"mean": per_tree.mean(axis=1), "sd": per_tree.std(axis=1, ddof=1),
+            "upper": np.quantile(per_tree, quantile, axis=1),
+            "lower": np.quantile(per_tree, 1 - quantile, axis=1),
+            "quantile": quantile}
+
+
+def ensemble_spread_table(spreads, y_true, edges=(5.0, 6.0, 7.0, 10.0)) -> pd.DataFrame:
+    """Does the ensemble's own upper quantile recover the events the mean misses?
+
+    The honest test of quoting an upper figure: how often does the observed
+    magnitude fall at or below it, overall and in the bands where the mean
+    forecast is known to fall short.
+    """
+    y_true = np.asarray(y_true, float)
+    rows = []
+    for name, sp in spreads.items():
+        if not sp:
+            continue
+        q = int(round(100 * sp["quantile"]))
+        for lo, hi in zip((edges[0],) + edges[:-1], (edges[-1],) + edges[1:]):
+            mask = (y_true >= lo) & (y_true < hi)
+            if not mask.any():
+                continue
+            label = ("All test sequences" if (lo == edges[0] and hi == edges[-1])
+                     else (f"M {lo:.1f} to {hi - 0.1:.1f}" if hi < 10
+                           else f"M {lo:.1f} and above"))
+            rows.append({"Model": name, "Band": label, "n": int(mask.sum()),
+                         "Mean forecast": float(sp["mean"][mask].mean()),
+                         f"Tree p{q} forecast": float(sp["upper"][mask].mean()),
+                         "Observed": float(y_true[mask].mean()),
+                         f"Observed at or below p{q} (%)":
+                             100 * float((y_true[mask] <= sp["upper"][mask]).mean())})
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        order = {"All test sequences": 0}
+        out["_o"] = out["Band"].map(lambda b: order.get(b, 1))
+        out = out.sort_values(["Model", "_o", "Band"]).drop(columns="_o").reset_index(drop=True)
+    return out
+
+
+def shap_values(model, X, background=None, max_background=100, seed=CFG.SEED):
+    """SHAP values for a fitted model, or None when `shap` is not installed.
+
+    SHAP was requested by the thesis evaluator to explain why the large events
+    come back too small.  It is the only optional dependency in this file that
+    changes what gets reported rather than only how fast it runs, so the import
+    is guarded and every caller treats a missing library as "section omitted"
+    rather than as a failure.
+    """
+    try:
+        import shap
+    except ImportError:
+        return None
+    X = np.asarray(X, float)
+    try:
+        if hasattr(model, "estimators_") or hasattr(model, "tree_"):
+            explainer = shap.TreeExplainer(model)
+            values = explainer.shap_values(X, check_additivity=False)
+            base = float(np.ravel(explainer.expected_value)[0])
+        else:
+            rng = np.random.default_rng(seed)
+            bg = np.asarray(background if background is not None else X, float)
+            if len(bg) > max_background:
+                bg = bg[rng.choice(len(bg), max_background, replace=False)]
+            explainer = shap.KernelExplainer(
+                lambda a: np.asarray(model.predict(a), float).ravel(), bg)
+            values = explainer.shap_values(X, silent=True)
+            base = float(np.ravel(explainer.expected_value)[0])
+    except Exception:
+        return None
+    values = np.asarray(values, float)
+    if values.ndim == 3:
+        values = values[..., 0]
+    return {"values": values, "base": base}
+
+
+def shap_table(shap_result, feature_names=None, top=None) -> pd.DataFrame:
+    """Mean absolute SHAP per feature, which is the global ranking."""
+    names = list(feature_names if feature_names is not None else FEATURE_NAMES)
+    v = shap_result["values"]
+    mean_abs = np.abs(v).mean(axis=0)
+    table = pd.DataFrame({"Feature": names, "Mean |SHAP|": mean_abs,
+                          "Mean SHAP": v.mean(axis=0),
+                          "Min SHAP": v.min(axis=0), "Max SHAP": v.max(axis=0)})
+    table["Share of explained movement (%)"] = 100 * mean_abs / mean_abs.sum()
+    table = table.sort_values("Mean |SHAP|", ascending=False).reset_index(drop=True)
+    table.insert(0, "Rank", np.arange(1, len(table) + 1))
+    return table.head(top) if top else table
+
+
+def shap_case_table(shap_result, X, y_true, predictions, feature_names=None,
+                    top=6, cases=3) -> pd.DataFrame:
+    """Why the biggest test sequences came back the size they did.
+
+    One block per case, largest observed magnitude first, listing the features
+    that pushed the forecast furthest and in which direction.  This is the
+    answer to "why was the M 7.1 forecast as M 5.4": the base rate is around
+    M 5.5 and no feature of that window moved it far enough.
+    """
+    names = list(feature_names if feature_names is not None else FEATURE_NAMES)
+    v, base = shap_result["values"], shap_result["base"]
+    X = np.asarray(X, float)
+    y_true = np.asarray(y_true, float)
+    order = np.argsort(-y_true)[:cases]
+    rows = []
+    for rank, i in enumerate(order, 1):
+        contrib = v[i]
+        lead = np.argsort(-np.abs(contrib))[:top]
+        label = (f"Case {rank}: observed M {y_true[i]:.1f}, "
+                 f"forecast M {predictions[i]:.2f}")
+        rows.append({"Case": label, "Feature": "Base value (training mean)",
+                     "Feature value": np.nan, "SHAP contribution": base,
+                     "Running forecast": base})
+        running = base
+        for j in lead:
+            running += contrib[j]
+            rows.append({"Case": "", "Feature": names[j],
+                         "Feature value": float(X[i, j]),
+                         "SHAP contribution": float(contrib[j]),
+                         "Running forecast": float(running)})
+        rest = float(contrib.sum() - contrib[lead].sum())
+        rows.append({"Case": "", "Feature": f"All other {len(names) - top} features",
+                     "Feature value": np.nan, "SHAP contribution": rest,
+                     "Running forecast": float(base + contrib.sum())})
+    return pd.DataFrame(rows)
+
+
+def magnitude_scale_selection(df, raw=None) -> pd.DataFrame:
+    """Which of the four reported magnitudes was adopted, and why.
+
+    PHIVOLCS reports up to four scales for one earthquake: Ml, mb, Ms and Mw.
+    They are not interchangeable, so one working magnitude has to be chosen per
+    event.  The rule is a fixed preference, Mw first and Ml last, applied
+    without looking at the value, so the choice cannot bend toward a
+    convenient number.
+    """
+    order = list(CFG.MAGNITUDE_PREFERENCE)
+    counts = df["MagScale"].value_counts()
+    rows = []
+    for rank, scale in enumerate(order, 1):
+        taken = int(counts.get(scale, 0))
+        reported = int(df[scale].notna().sum()) if scale in df.columns else np.nan
+        rows.append({"Preference rank": rank, "Scale": scale,
+                     "Measures": MAGNITUDE_SCALE_NOTE.get(scale, ""),
+                     "Events reporting it": reported,
+                     "Events where it was adopted": taken,
+                     "% of catalogue adopted": 100 * taken / len(df)})
+    return pd.DataFrame(rows)
+
+
+MAGNITUDE_SCALE_NOTE = {
+    "Mw": "Moment magnitude, derived from seismic moment; saturates at no upper limit",
+    "Ms": "Surface-wave magnitude; saturates above about M 8",
+    "Mb": "Body-wave magnitude; saturates above about M 6.5",
+    "Ml": "Local or Richter magnitude; saturates above about M 7",
+}
+
+# The same information in the few words a narrow table column can hold.
+MAGNITUDE_SCALE_SHORT = {
+    "Mw": "no saturation",
+    "Ms": "saturates ~M 8",
+    "Mb": "saturates ~M 6.5",
+    "Ml": "saturates ~M 7",
+}
+
+
 def target_feature_correlations(seq) -> pd.DataFrame:
     """Univariate association of each feature with the mainshock magnitude."""
     rows = []
@@ -2730,7 +2965,7 @@ def model_registry(rf_params=None) -> pd.DataFrame:
     ]
     for name, (_, family, params) in tabular_estimators(rf_params=rf_params).items():
         rows.append({"Model": name, "Family": family,
-                     "Input representation": "22 engineered features",
+                     "Input representation": f"{len(FEATURE_NAMES)} engineered features",
                      "Key settings": params})
     rows += [
         {"Model": "LSTM", "Family": "Recurrent network",
@@ -2909,7 +3144,7 @@ def leaderboard(predictions, y_true, reference="Climatology (training mean)") ->
         m = regression_metrics(y_true, pred)
         lo, hi = _bootstrap_ci(y_true, np.asarray(pred, float),
                                lambda a, b: float(np.sqrt(np.mean((b - a) ** 2))))
-        rows.append({"Model": name, "RMSE": m["RMSE"],
+        rows.append({"Model": name, "RMSE": m["RMSE"], "MSE": m["MSE"],
                      "95% CI for RMSE": f"[{lo:.3f}, {hi:.3f}]",
                      "MAE": m["MAE"], "R²": m["R²"], "Bias": m["Bias (ME)"],
                      "% within ±0.3": m["% within ±0.3"],
@@ -3275,7 +3510,7 @@ def fig_importance(importance, top=15):
     return _save(fig, "fig_importance.png")
 
 
-def fig_leaderboard(board):
+def fig_leaderboard(board, name="fig_leaderboard.png"):
     """Test error for every model, ranked, with the baseline as the dividing line.
 
     The chart has one job: show which models are worth anything. So the winner
@@ -3287,10 +3522,10 @@ def fig_leaderboard(board):
     """
     data = board.iloc[::-1].reset_index(drop=True)       # best at the top
     ref = float(board.loc[board["Model"].str.startswith("Climatology"), "RMSE"].iloc[0])
-    is_base = data["Model"].str.contains("Climatology|Persistence")
+    is_base = data["Model"].str.contains("Climatology|Persistence|baseline")
     best = data["RMSE"].idxmin()
 
-    height = 0.30 * len(data) + 1.5
+    height = 0.30 * len(data) + 1.9
     fig, ax = plt.subplots(figsize=(7.2, height))
 
     # Everything slower than the baseline sits in a faintly shaded band.
@@ -3319,10 +3554,15 @@ def fig_leaderboard(board):
                 zorder=4)
 
     ax.axvline(ref, ls=(0, (4, 3)), lw=1.1, color="#9aa39c", zorder=2)
-    ax.annotate("climatology baseline", xy=(ref, len(data) - 0.28),
+    # Headroom for the annotations, so they never land on a bar's value label.
+    # With sixteen models there was space above the top bar by accident; with
+    # four there is none, and the two collided.
+    ax.set_ylim(-0.7, len(data) - 0.5 + 1.1)
+    ax.annotate("climatology baseline", xy=(ref, len(data) - 0.5 + 0.78),
                 xytext=(7, 0), textcoords="offset points",
                 fontsize=8.4, color=MUTED, va="center")
-    ax.annotate("anything past this line adds nothing", xy=(ref, len(data) - 0.92),
+    ax.annotate("anything past this line adds nothing",
+                xy=(ref, len(data) - 0.5 + 0.28),
                 xytext=(7, 0), textcoords="offset points",
                 fontsize=7.6, color="#a8766c", va="center")
 
@@ -3339,7 +3579,25 @@ def fig_leaderboard(board):
     ax.xaxis.grid(True, color=LINE, lw=0.6, zorder=1)
     ax.set_axisbelow(True)
     fig.tight_layout()
-    return _save(fig, "fig_leaderboard.png")
+    return _save(fig, name)
+
+
+def fig_objective_models(board):
+    """The same chart restricted to the three models the objectives name.
+
+    The paper compares sixteen forecasters and that comparison is the finding.
+    The public page shows only Extra Trees, Random Forest and LSTM, because
+    those are the three the study set out to build and listing the rest there
+    would commit the authors to reviewing literature for all sixteen. The
+    climatology baseline stays as the dividing line: it is a reference, not a
+    model, and skill has no meaning without it.
+    """
+    keep = ("Extra Trees", "Random Forest", "LSTM", "Climatology (training mean)")
+    sub = board[board["Model"].isin(keep)].copy()
+    sub["Model"] = sub["Model"].replace(
+        {"Climatology (training mean)": "Climatology (baseline)"})
+    sub = sub.sort_values("RMSE").reset_index(drop=True)
+    return fig_leaderboard(sub, name="fig_objective_models.png")
 
 
 def fig_cv_distribution(cv, order):
@@ -3417,6 +3675,147 @@ def fig_foreshock_gap(seq):
 
     fig.tight_layout()
     return _save(fig, "fig_foreshock_gap.png")
+
+
+def fig_cleaning_funnel(audit, decluster, profile):
+    """Where the 18,338 raw records went, in one picture.
+
+    The thesis is asked to show that the catalogue was cleaned and declustered
+    rather than merely used, so this is the audit trail drawn as a funnel: raw
+    records, the duplicates collapsed, the dependent events Maeda's method
+    removed, and the handful of windows that survive every condition.
+    """
+    raw = int(str(audit.iloc[0]["Records before"]).replace(",", ""))
+    clean = int(str(audit.iloc[-1]["Records retained"]).replace(",", ""))
+    dup = raw - clean
+    dep = int(decluster.loc[decluster["Declustering stage"]
+                            .str.contains("Dependent"), "n"].iloc[0])
+    indep = clean - dep
+    cand = int(str(profile.loc[profile["Quantity"]
+                               .str.contains("Candidate"), "Value"].iloc[0]).replace(",", ""))
+    kept = int(str(profile.loc[profile["Quantity"]
+                               .str.contains("retained"), "Value"].iloc[0]).replace(",", ""))
+
+    stages = [("Raw PHIVOLCS records", raw, ""),
+              ("Duplicate origins collapsed", clean, f"−{dup:,} repeats of one earthquake"),
+              ("Independent events\n(Maeda Eq. 1–3)", indep,
+               f"−{dep:,} dependent: aftershocks and swarms"),
+              ("Candidate mainshocks M ≥ 5.0", cand, f"−{indep - cand:,} below the threshold"),
+              ("Forecast sequences", kept,
+               f"−{cand - kept:,} windows too sparse or holding a larger event")]
+
+    fig, ax = plt.subplots(figsize=(7.2, 3.6))
+    # Square-root widths. The last stage is a hundredth of the first, and on a
+    # linear scale its bar would be a hairline with the count unreadable inside
+    # it. The counts are printed on every bar, so the width is a visual aid and
+    # the caption says which scale it is on.
+    widest = math.sqrt(stages[0][1])
+    for i, (label, n, note) in enumerate(stages):
+        half = 0.5 * math.sqrt(n) / widest
+        colour = ACCENT if i == len(stages) - 1 else FILL
+        ax.barh(-i, 2 * half, left=0.5 - half, height=0.56,
+                color=colour, edgecolor=INK, linewidth=0.5)
+        inside = half > 0.085
+        ax.text(0.5 if inside else 0.5 + half + 0.015, -i, f"{n:,}",
+                ha="center" if inside else "left", va="center", fontsize=9,
+                color="white" if (inside and i == len(stages) - 1) else INK)
+        ax.text(-0.03, -i, label, ha="right", va="center", fontsize=8.4,
+                color=INK, linespacing=1.35)
+        if note:
+            ax.text(1.03, -i, note, ha="left", va="center", fontsize=7.8, color=MUTED)
+    ax.set_xlim(-0.5, 1.7)
+    ax.set_ylim(-len(stages) + 0.4, 0.6)
+    ax.axis("off")
+    ax.set_title("Every record removed, and the condition that removed it",
+                 loc="left", fontsize=9, color=INK, x=-0.06)
+    fig.tight_layout()
+    return _save(fig, "fig_cleaning_funnel.png")
+
+
+def fig_magnitude_band(band, y_true, predictions, models):
+    """The shrinkage, plotted: forecasts flatten as the real event grows."""
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.3))
+    y_true = np.asarray(y_true, float)
+
+    ax = axes[0]
+    lim = [4.8, max(7.6, y_true.max() + 0.3)]
+    ax.plot(lim, lim, "--", lw=0.9, color=ACCENT, zorder=2)
+    for name, marker in zip(models, ["o", "s", "^", "D"]):
+        ax.scatter(y_true, np.asarray(predictions[name], float), s=16, marker=marker,
+                   facecolors="none", edgecolors=INK, linewidths=0.55,
+                   label=name, zorder=3)
+    ax.set_xlim(lim)
+    ax.set_ylim(lim)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("Observed mainshock magnitude")
+    ax.set_ylabel("Forecast magnitude")
+    ax.set_title("(a) Perfect forecasts sit on the dashed line", loc="left", fontsize=9)
+    ax.legend(frameon=False, fontsize=7.4, loc="upper left")
+
+    ax = axes[1]
+    bands = list(dict.fromkeys(band["Observed band"]))
+    x = np.arange(len(bands))
+    width = 0.8 / max(len(models), 1)
+    for k, name in enumerate(models):
+        sub = band[band["Model"] == name].set_index("Observed band")
+        vals = [sub.loc[b, "Bias (forecast − observed)"] if b in sub.index else np.nan
+                for b in bands]
+        ax.bar(x + k * width - 0.4 + width / 2, vals, width * 0.9,
+               color=ACCENT if k == 0 else FILL, edgecolor=INK, linewidth=0.5,
+               label=name)
+    ax.axhline(0, lw=0.8, color=INK)
+    ax.set_xticks(x)
+    ax.set_xticklabels([b.replace("M ", "") for b in bands], fontsize=7.8)
+    ax.set_xlabel("Observed magnitude band")
+    ax.set_ylabel("Bias (forecast − observed)")
+    ax.set_title("(b) Every model under-forecasts the largest events",
+                 loc="left", fontsize=9)
+    ax.legend(frameon=False, fontsize=7.4)
+
+    fig.tight_layout()
+    return _save(fig, "fig_magnitude_band.png")
+
+
+def fig_shap(shap_result, X, feature_names=None, top=14):
+    """Global ranking beside the per-sequence spread, the standard SHAP pair."""
+    names = list(feature_names if feature_names is not None else FEATURE_NAMES)
+    v = shap_result["values"]
+    X = np.asarray(X, float)
+    order = np.argsort(-np.abs(v).mean(axis=0))[:top][::-1]
+
+    fig, axes = plt.subplots(1, 2, figsize=(7.4, 4.2),
+                             gridspec_kw={"width_ratios": [1.0, 1.25]})
+
+    ax = axes[0]
+    ax.barh(np.arange(len(order)), np.abs(v).mean(axis=0)[order],
+            color=FILL, edgecolor=INK, linewidth=0.5, height=0.66)
+    ax.set_yticks(np.arange(len(order)))
+    ax.set_yticklabels([names[i] for i in order], fontsize=7.6)
+    ax.set_xlabel("Mean |SHAP| (magnitude units)")
+    ax.set_title("(a) How far each feature moves a forecast", loc="left", fontsize=9)
+
+    ax = axes[1]
+    rng = np.random.default_rng(CFG.SEED)
+    for row, j in enumerate(order):
+        col = X[:, j]
+        finite = np.isfinite(col)
+        shade = np.full(col.shape, 0.5)
+        if finite.sum() > 1 and np.ptp(col[finite]) > 0:
+            shade[finite] = ((col[finite] - col[finite].min())
+                             / np.ptp(col[finite]))
+        jitter = rng.uniform(-0.17, 0.17, size=v.shape[0])
+        ax.scatter(v[:, j], row + jitter, s=9, c=shade, cmap="RdGy_r",
+                   vmin=0, vmax=1, linewidths=0, alpha=0.85)
+    ax.axvline(0, lw=0.8, color=INK)
+    ax.set_yticks(np.arange(len(order)))
+    ax.set_yticklabels([])
+    ax.set_ylim(-0.7, len(order) - 0.3)
+    ax.set_xlabel("SHAP contribution to this sequence (magnitude units)")
+    ax.set_title("(b) One dot per sequence, dark means a high feature value",
+                 loc="left", fontsize=9)
+
+    fig.tight_layout()
+    return _save(fig, "fig_shap.png")
 
 
 def fig_residuals(results):
@@ -3846,6 +4245,20 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  "near M 6.5 and mb near M 6.0, which is why Mw and Ms take precedence.",
                  slug="t03_magnitude_scales", decimals={"% of catalogue": 1},
                  int_columns=("n reported", "n adopted as working scale"))
+    report.table(magnitude_scale_selection(catalogue),
+                 "Rule for Selecting the Working Magnitude From the Four Reported Scales",
+                 "PHIVOLCS reports up to four magnitudes for one earthquake and they are "
+                 "not interchangeable, so one working value has to be adopted per event. "
+                 "The rule is a fixed preference applied without inspecting the value, so "
+                 "the choice cannot bend toward a convenient number: the first scale in "
+                 "this order that the record populates becomes the working magnitude. The "
+                 "order follows the saturation behaviour of the scales, the one that "
+                 "holds its linearity longest first.",
+                 slug="t03b_magnitude_selection",
+                 decimals={"% of catalogue adopted": 1},
+                 int_columns=("Preference rank", "Events reporting it",
+                              "Events where it was adopted"),
+                 align={"Scale": LEFT, "Measures": LEFT}, font_size=Pt(9))
     report.table(scale_coverage(catalogue),
                  "Co-Reporting of Magnitude Scales Within the Catalogue",
                  "Mw is co-reported with another scale for very few events, which is the "
@@ -4357,6 +4770,61 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  slug="t41b_magnitude_floor", decimals=3,
                  align={"Model": LEFT})
 
+    Xtrval, Xtest = bundle.tabular(idx_trval, idx_test)
+
+    # ---- where the model fails, measured rather than asserted -------------- #
+    # An evaluator reported that a recorded M 7.1 came back near M 5.4 and asked
+    # for the models to forecast large events better. The three tables below are
+    # that request taken seriously: what the error actually is per band, how
+    # many examples of each band the training partition contains, and whether
+    # the ensemble's own upper quantile recovers what its mean misses.
+    headline = [m for m in ("Extra Trees", "Random Forest", "LSTM") if m in predictions]
+    band = magnitude_band_table(y_test, predictions, headline)
+    band.to_csv(CFG.TABLE_DIR / "t41c_magnitude_band.csv", index=False)
+    report.table(band,
+                 "Forecast Error by the Size of the Earthquake That Actually Arrived",
+                 "Squared-error training shrinks every forecast toward the conditional "
+                 "mean, and the shrinkage is worst where the training data is thinnest. "
+                 "The bias column is near zero in the crowded M 5.0 to 5.4 band and "
+                 "approaches one full magnitude unit above M 7.0. A model that behaves "
+                 "this way is informative about moderate events and must not be read as "
+                 "a warning for large ones; Table 41e reports what can be quoted instead.",
+                 slug="t41c_magnitude_band", decimals=3, int_columns=("n",),
+                 align={"Observed band": LEFT, "Model": LEFT}, font_size=Pt(9))
+
+    report.table(training_support_table(
+                     sequences, {"Training": idx_train, "Validation": idx_val,
+                                 "Test": idx_test}),
+                 "Sequences Available in Each Magnitude Band and Partition",
+                 "The explanation for the bias in Table 41c. A supervised model cannot "
+                 "learn a magnitude band it has barely seen, and the largest band is "
+                 "represented by a handful of sequences in nearly sixty years of "
+                 "catalogue. No change of algorithm repairs this; only more recorded "
+                 "large earthquakes would, and waiting for those is not a research "
+                 "method.",
+                 slug="t41d_training_support",
+                 decimals={"% of all sequences": 1},
+                 int_columns=tuple(f"{p} n" for p in ("Training", "Validation", "Test"))
+                             + ("Total",),
+                 align={"Magnitude band": LEFT})
+
+    spreads = {name: ensemble_spread(fitted[name], Xtest)
+               for name in headline if hasattr(fitted.get(name), "estimators_")}
+    spread_table = ensemble_spread_table(spreads, y_test)
+    if not spread_table.empty:
+        spread_table.to_csv(CFG.TABLE_DIR / "t41e_ensemble_spread.csv", index=False)
+        report.table(spread_table,
+                     "The Ensemble's Own Upper Quantile Against the Observed Magnitude",
+                     "A forest's point forecast is the mean over its trees, and that mean "
+                     "is what shrinks. The trees themselves disagree, and the ninetieth "
+                     "percentile of their forecasts is a legitimate upper figure obtained "
+                     "at no extra cost. It is reported here, and shown in the public "
+                     "interface beside the point forecast, because quoting only the "
+                     "centre of a shrunken distribution understates the largest events "
+                     "the final column counts.",
+                     slug="t41e_ensemble_spread", decimals=2, int_columns=("n",),
+                     align={"Model": LEFT, "Band": LEFT}, font_size=Pt(9))
+
     report.raw_table(_network_training_table(nets, sequence_backend()).astype(str),
                      "Training Outcome of the Three Sequence Networks",
                      "All three networks share the optimiser, the early-stopping rule and "
@@ -4377,7 +4845,6 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  slug="t43_model_comparison", decimals=4, p_columns=("p",),
                  align={"Comparison": LEFT, "Statistic": LEFT, "Interpretation": LEFT})
 
-    Xtrval, Xtest = bundle.tabular(idx_trval, idx_test)
     importance = feature_importance_table(fitted["Random Forest"], Xtest, y_test)
     report.table(importance,
                  "Random Forest Feature Importance for Mainshock Magnitude",
@@ -4387,6 +4854,51 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                  "reports the increase in error when a feature is randomly shuffled.",
                  slug="t44_feature_importance", decimals=4, int_columns=("Rank",),
                  align={"Feature": LEFT}, font_size=Pt(9))
+
+    # ---- SHAP ------------------------------------------------------------- #
+    # Permutation importance says which features matter on average. It does not
+    # say which way a feature pushed one particular forecast, which is the
+    # question an evaluator asked about the M 7.1 that came back near M 5.4.
+    # SHAP answers that, decomposing each forecast into the training mean plus
+    # one signed contribution per feature.
+    shap_model = "Extra Trees" if "Extra Trees" in fitted else "Random Forest"
+    shap_result = shap_values(fitted[shap_model], Xtest, background=Xtrval)
+    shap_global = None
+    if shap_result is None:
+        print("      shap not installed, SHAP section omitted")
+        doc.add_paragraph(
+            "SHAP attribution was requested but the shap package is not installed in "
+            "the environment that produced this report, so the section is omitted "
+            "rather than approximated. Install shap and re-run to include it.")
+    else:
+        shap_global = shap_table(shap_result)
+        shap_global.to_csv(CFG.TABLE_DIR / "t44b_shap_global.csv", index=False)
+        report.table(shap_global.head(15),
+                     f"SHAP Attribution for the {shap_model} Model, Fifteen Leading "
+                     "Features",
+                     "SHAP decomposes every single forecast into the training mean plus "
+                     "one signed contribution per feature, and the contributions sum "
+                     "exactly to the forecast. Mean |SHAP| is therefore in magnitude "
+                     "units and reads directly: a feature with a mean of 0.08 moves a "
+                     "typical forecast by eight hundredths of a magnitude unit. The "
+                     "total across all features is small, which is the same finding the "
+                     "leaderboard reports in a different currency.",
+                     slug="t44b_shap_global", decimals=4, int_columns=("Rank",),
+                     align={"Feature": LEFT}, font_size=Pt(9))
+
+        cases = shap_case_table(shap_result, Xtest, y_test, predictions[shap_model])
+        cases.to_csv(CFG.TABLE_DIR / "t44c_shap_cases.csv", index=False)
+        report.table(cases,
+                     "SHAP Decomposition of the Three Largest Test Sequences",
+                     "Read each block downward: the base value is what the model "
+                     "forecasts knowing nothing about the sequence, and each row adds "
+                     "one feature's contribution until the running total reaches the "
+                     "forecast. For the largest events the contributions are small and "
+                     "partly cancel, so the forecast never travels far from the base "
+                     "value. That is the mechanism behind the under-forecasting in "
+                     "Table 41c, stated as arithmetic instead of as an impression.",
+                     slug="t44c_shap_cases", decimals=3,
+                     align={"Case": LEFT, "Feature": LEFT}, font_size=Pt(8.5))
 
     # ---- ordinal classification ------------------------------------------ #
     y_class_trval = sequences["TargetClass"].astype(str).to_numpy()[idx_trval]
@@ -4495,10 +5007,40 @@ def main(run_models=True, run_figures=True, quick=False, excel=None):
                       "The dashed line marks the climatology baseline; any bar to its "
                       "right is a model that fails to beat the historical average.",
                       width_in=6.2)
+        report.figure(fig_objective_models(board),
+                      "Test-Partition RMSE for the Three Models Named in the Objectives",
+                      "The same chart restricted to Extra Trees, Random Forest and the "
+                      "LSTM, with climatology retained as the dividing line because "
+                      "skill has no meaning without it. This is the comparison the "
+                      "public interface shows.", width_in=5.6)
         report.figure(fig_learning_curves({n: net.history_ for n, net in nets.items()}),
                       "Validation Learning Curves for the Three Sequence Networks",
                       "Early stopping restores the weights at each curve's minimum.",
                       width_in=5.2)
+        report.figure(fig_cleaning_funnel(audit, decluster_summary,
+                                          _sequence_profile(sequences,
+                                              sequences.attrs.get("skipped", {}))),
+                      "From Raw Records to Forecast Sequences",
+                      "Bar width is on a square-root scale, because the last stage is a "
+                      "hundredth of the first and a linear bar for it would be a "
+                      "hairline; the counts printed on the bars are the measurement. "
+                      "Each step names the condition that removed what it removed, so "
+                      "the figure is the cleaning audit of Tables 2, 25 and 29 in one "
+                      "view.", width_in=6.4)
+        report.figure(fig_magnitude_band(band, y_test, predictions, headline),
+                      "Where the Forecasts Fail: Error Against Observed Magnitude",
+                      "Panel (a) plots every test sequence; points below the dashed line "
+                      "are under-forecasts. Panel (b) is the bias of Table 41c. Both "
+                      "show the same thing: the models track the middle of the range and "
+                      "flatten against the top of it.", width_in=6.4)
+        if shap_result is not None:
+            report.figure(fig_shap(shap_result, Xtest),
+                          f"SHAP Attribution for the {shap_model} Model",
+                          "Panel (a) ranks features by how far they move a typical "
+                          "forecast. Panel (b) shows the spread behind each average, one "
+                          "dot per test sequence, shaded by the value of that feature: a "
+                          "feature whose dark and light dots separate cleanly left and "
+                          "right has a consistent directional effect.", width_in=6.4)
         report.figure(fig_importance(importance),
                       "Permutation Feature Importance for the Random Forest Model",
                       "Error bars are ±1 SD over 20 permutation repeats on the test "

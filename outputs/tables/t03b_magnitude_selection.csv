@@ -1,0 +1,5 @@
+Preference rank,Scale,Measures,Events reporting it,Events where it was adopted,% of catalogue adopted
+1,Mw,"Moment magnitude, derived from seismic moment; saturates at no upper limit",905,905,5.122544857644195
+2,Ms,Surface-wave magnitude; saturates above about M 8,11899,11830,66.96100073583517
+3,Mb,Body-wave magnitude; saturates above about M 6.5,6824,1730,9.792268070413765
+4,Ml,Local or Richter magnitude; saturates above about M 7,8288,3202,18.124186336106867

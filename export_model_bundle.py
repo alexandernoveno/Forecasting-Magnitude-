@@ -10,17 +10,20 @@ also the GitHub Pages site root. Imports earthquake_analysis.py rather than
 re-deriving anything, so the exported models are the same objects the paper
 reports, fitted on the same combined training and validation partitions.
 
-The bundle carries four models, one per family compared in the paper:
+The bundle carries the three models the study objectives name, and only those:
 
-    Extra Trees        best on the test partition once fault distance is added
+    Extra Trees        best on the test partition
     Random Forest      the tree ensemble the methodology names
-    Elastic Net        a regularised linear model
     LSTM               the recurrent network the methodology names
 
+The other thirteen forecasters stay in the paper's comparison tables, where
+they belong, and are not shipped to the browser.
+
 It also carries the preprocessing constants (log flags, training medians,
-winsorising bounds, scaler statistics) and a set of verification vectors. The
+winsorising bounds, scaler statistics), the active-fault geometry, the
+evidence panels the page displays, and a set of verification vectors. The
 vectors are the whole point of shipping this file: the browser recomputes the
-22 features from raw events in JavaScript, and a mismatch against the Python
+27 features from raw events in JavaScript, and a mismatch against the Python
 values is silent unless something checks. `verify_bundle.cjs` checks.
 """
 from __future__ import annotations
@@ -32,7 +35,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import ExtraTreesRegressor, RandomForestRegressor
-from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -130,9 +132,6 @@ def main() -> None:
     # page would report a score the analysis never produced.
     et = ExtraTreesRegressor(n_estimators=200, max_depth=10,
                              random_state=ea.CFG.SEED, n_jobs=-1).fit(X, y)
-    en = Pipeline([("scale", StandardScaler()),
-                   ("model", ElasticNet(alpha=0.05, l1_ratio=0.5, max_iter=10000,
-                                        random_state=ea.CFG.SEED))]).fit(X, y)
 
     # --- Sequence model ------------------------------------------------------ #
     seq_tr, seq_te = bundle.sequence(idx_trval, idx_test)
@@ -155,8 +154,10 @@ def main() -> None:
         ss_tot = float(((y_test - y_test.mean()) ** 2).sum())
         return {
             "rmse": round(float(np.sqrt(np.mean(err ** 2))), 4),
+            "mse": round(float(np.mean(err ** 2)), 4),
             "mae": round(float(np.mean(np.abs(err))), 4),
             "r2": round(1 - ss_res / ss_tot, 4),
+            "bias": round(float(np.mean(err)), 4),
         }
 
     clim = float(y.mean())
@@ -168,48 +169,43 @@ def main() -> None:
     preds = {
         "random_forest": rf.predict(X_test),
         "extra_trees": et.predict(X_test),
-        "elastic_net": en.predict(X_test),
         "lstm": lstm.predict(seq_te),
     }
     for key, pred in preds.items():
         print(f"  {key:18s} RMSE {score(pred)['rmse']:.4f}  skill {skill(pred):+.1f}%")
 
     models = {
-        "random_forest": {
-            "label": "Random Forest",
-            "family": "Tree ensemble",
-            "input": "features",
-            "note": "Best model in the paper. 300 trees, depth 8.",
-            "kind": "forest",
-            "trees": [tree_to_dict(t) for t in rf.estimators_],
-            **score(preds["random_forest"]), "skill": skill(preds["random_forest"]),
-        },
         "extra_trees": {
             "label": "Extra Trees",
             "family": "Tree ensemble",
             "input": "features",
-            "note": "Best on the test partition. 200 fully randomised trees, depth 10.",
+            "note": "Best on the test partition. 200 fully randomised trees, "
+                    "depth 10. Splits are drawn at random rather than optimised, "
+                    "which is what keeps it from overfitting 100 training sequences.",
             "kind": "forest",
             "trees": [tree_to_dict(t) for t in et.estimators_],
             **score(preds["extra_trees"]), "skill": skill(preds["extra_trees"]),
         },
-        "elastic_net": {
-            "label": "Elastic Net",
-            "family": "Regularised linear",
+        "random_forest": {
+            "label": "Random Forest",
+            "family": "Tree ensemble",
             "input": "features",
-            "note": "One weight per feature. The whole model is 22 numbers.",
-            "kind": "linear",
-            "mean": np.round(en.named_steps["scale"].mean_, WEIGHT_ROUND).tolist(),
-            "scale": np.round(en.named_steps["scale"].scale_, WEIGHT_ROUND).tolist(),
-            "coef": np.round(en.named_steps["model"].coef_, WEIGHT_ROUND).tolist(),
-            "intercept": round(float(en.named_steps["model"].intercept_), WEIGHT_ROUND),
-            **score(preds["elastic_net"]), "skill": skill(preds["elastic_net"]),
+            "note": (f"{rf_params['n_estimators']} trees, "
+                     + (f"depth {rf_params['max_depth']}"
+                        if rf_params.get("max_depth") else "grown to purity")
+                     + f", {rf_params['max_features']} features per split. "
+                       "Settings chosen by the grid search in the paper."),
+            "kind": "forest",
+            "trees": [tree_to_dict(t) for t in rf.estimators_],
+            **score(preds["random_forest"]), "skill": skill(preds["random_forest"]),
         },
         "lstm": {
             "label": "LSTM",
             "family": "Recurrent network",
             "input": "sequence",
-            "note": "Reads the raw event stream. Scores worse than the baseline.",
+            "note": (f"Reads the raw event stream, {ea.CFG.SEQ_LEN} events deep, "
+                     "rather than the engineered features. Named in the study "
+                     "objectives; scores below the climatology baseline here."),
             "kind": "lstm",
             "units": lstm.units,
             "seq_len": ea.CFG.SEQ_LEN,
@@ -230,10 +226,10 @@ def main() -> None:
     # reimplementation can be checked instead of trusted.
     rng = np.random.default_rng(ea.CFG.SEED)
     picks = sorted(rng.choice(idx_test, size=min(60, len(idx_test)), replace=False).tolist())
-    vectors, examples = [], []
+    vectors = []
     cat_sorted = catalogue.sort_values("datetime", kind="mergesort").reset_index(drop=True)
 
-    for pos, k in enumerate(picks):
+    for k in picks:
         row = sequences.iloc[k]
         events = window_events(cat_sorted, row, ea)
         vec = {
@@ -254,18 +250,6 @@ def main() -> None:
             "actual": round(float(row["Target"]), 2),
         }
         vectors.append(vec)
-        if pos < 3:
-            examples.append({
-                "id": f"seq{pos + 1}",
-                "when": row["MainshockTime"].strftime("%d %b %Y"),
-                # Days since the catalogue origin, so the page uses the real
-                # mainshock time rather than a date the reader typed.
-                "t_end": vec["t_end_days"],
-                "iso": row["MainshockTime"].strftime("%Y-%m-%d"),
-                "epicentre": vec["epicentre"],
-                "events": events,
-                "actual": vec["actual"],
-            })
 
     payload = {
         "generated_from": "earthquake_analysis.py",
@@ -288,13 +272,14 @@ def main() -> None:
         "fault_features": list(ea.FAULT_FEATURE_NAMES),
         "sources": source_points(catalogue),
         "occurrence": occurrence_block(ea),
+        "evidence": evidence_block(ea),
+        "seed": seed_sequence(cat_sorted, sequences, idx_test, ea),
         "climatology": round(clim, 4),
         "climatology_rmse": round(float(np.sqrt(clim_mse)), 4),
         "n_train": int(len(idx_trval)),
         "n_test": int(len(idx_test)),
         "models": models,
         "feature_names": list(ea.FEATURE_NAMES),
-        "examples": examples,
     }
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -303,7 +288,6 @@ def main() -> None:
     # downloaded by every visitor, so they live outside the published folder.
     VECTORS_OUT.write_text(json.dumps({"vectors": vectors}, separators=(",", ":")))
     print(f"\nWrote {OUT}  ({OUT.stat().st_size / 1024:,.0f} KB)")
-    print(f"  {len(examples)} worked examples")
     print(f"Wrote {VECTORS_OUT}  ({VECTORS_OUT.stat().st_size / 1024:,.0f} KB), "
           f"{len(vectors)} verification vectors")
 
@@ -359,6 +343,7 @@ def stamp_asset_versions() -> None:
     """
     import hashlib
     import re
+    import shutil
     import struct
 
     page = ROOT / "index.html"
@@ -366,6 +351,16 @@ def stamp_asset_versions() -> None:
         return
     html = page.read_text()
     notes = []
+
+    # The pipeline writes figures into outputs/; the site serves figures/. Copy
+    # across whatever the page actually references, so adding an <img> to the
+    # page is the only step needed to publish a new chart.
+    served = ROOT / "figures"
+    served.mkdir(exist_ok=True)
+    for name in sorted(set(re.findall(r'src="figures/([^"?]+)"', html))):
+        built = ROOT / "outputs" / "figures" / name
+        if built.exists():
+            shutil.copy2(built, served / name)
 
     for name in ("forecast.js", "app.js"):
         target = ROOT / name
@@ -388,8 +383,12 @@ def stamp_asset_versions() -> None:
         notes.append(f"{src.split('/')[-1]}={width}x{height}")
         return (f'src="{src}?v={digest}" width="{width}" height="{height}"')
 
+    # width and height may be absent on a newly added <img>; they are written
+    # in either way, because their whole purpose is to reserve the space before
+    # the image arrives.
     html, images = re.subn(
-        r'src="(?P<src>figures/[^"?]+)(?:\?v=[0-9a-f]+)?"\s+width="\d+"\s+height="\d+"',
+        r'src="(?P<src>figures/[^"?]+)(?:\?v=[0-9a-f]+)?"'
+        r'(?:\s+width="\d+"\s+height="\d+")?',
         refresh_image, html)
 
     page.write_text(html)
@@ -466,19 +465,220 @@ def occurrence_block(ea) -> dict:
     }
 
 
+FAULTS_IN = ROOT / "data" / "active_faults.json"
+
+
 def source_points(catalogue) -> dict:
-    """The distinct nearest-fault points the catalogue resolves to.
+    """The active-fault vertices the page measures distances against.
 
     The page cannot rerun a QGIS fault layer, so it picks the nearest of these
-    for coordinates a visitor types in. Measured against the supplied column on
-    3,000 catalogue events, this selects the same source for 99.7% of them and
-    is at most 0.24 km further out for the rest.
+    for coordinates a visitor types in. The authors supplied the layer's own
+    1,015 vertices, which is a superset of the 797 the catalogue's nearest-source
+    column resolves to; recomputing every catalogue event against the fuller set
+    moves the distance by a median of 0.06 km and by more than 1 km for 1.7% of
+    events, so the two are the same layer at different sampling densities. The
+    supplied set is used here because a visitor's own coordinates have no
+    catalogue row to read a distance from.
     """
+    if FAULTS_IN.exists():
+        data = json.loads(FAULTS_IN.read_text())
+        pts = {(round(a, 6), round(o, 6))
+               for trace in data["traces"] for a, o in trace}
+        if "SrcLat" in catalogue.columns:
+            pts |= set(map(tuple, np.round(
+                catalogue[["SrcLat", "SrcLon"]].drop_duplicates().to_numpy(float), 6)))
+        ordered = sorted(pts)
+        return {"lat": [a for a, _ in ordered], "lon": [o for _, o in ordered],
+                "traces": data["traces"]}
     if "SrcLat" not in catalogue.columns:
-        return {"lat": [], "lon": []}
+        return {"lat": [], "lon": [], "traces": []}
     pts = catalogue[["SrcLat", "SrcLon"]].drop_duplicates()
     return {"lat": np.round(pts["SrcLat"].to_numpy(float), 6).tolist(),
-            "lon": np.round(pts["SrcLon"].to_numpy(float), 6).tolist()}
+            "lon": np.round(pts["SrcLon"].to_numpy(float), 6).tolist(),
+            "traces": []}
+
+
+def _table(name):
+    """One of the pipeline's CSV tables, or None if it was never produced."""
+    path = ROOT / "outputs" / "tables" / f"{name}.csv"
+    return pd.read_csv(path) if path.exists() else None
+
+
+def evidence_block(ea) -> dict:
+    """The numbers the page quotes, read from the tables that produced them.
+
+    Every headline on the landing page used to be typed in by hand, and when
+    the data set changed the page went on reporting the old figure. An
+    evaluator caught exactly that: a 23.6% improvement in the copy against
+    11.4% in the results. Nothing here is typed twice any more.
+    """
+    out = {}
+
+    board = _table("t39_leaderboard")
+    if board is not None:
+        keep = ("Extra Trees", "Random Forest", "LSTM",
+                "Climatology (training mean)")
+        sub = board[board["Model"].isin(keep)]
+        out["leaderboard"] = [
+            {"model": r["Model"], "rmse": round(float(r["RMSE"]), 4),
+             "mse": round(float(r["MSE"]), 4), "mae": round(float(r["MAE"]), 4),
+             "r2": round(float(r["R²"]), 4),
+             "ci": str(r["95% CI for RMSE"]),
+             "skill": round(float(r["Skill vs. climatology (%)"]), 1),
+             "within": round(float(r["% within ±0.3"]), 1),
+             "baseline": r["Model"].startswith("Climatology")}
+            for _, r in sub.iterrows()]
+        out["n_models_compared"] = int(len(board))
+        out["n_beating_baseline"] = int(
+            (board["Skill vs. climatology (%)"] > 0).sum())
+
+    band = _table("t41c_magnitude_band")
+    if band is not None:
+        out["bands"] = [
+            {"band": r["Observed band"], "n": int(r["n"]), "model": r["Model"],
+             "observed": round(float(r["Mean observed"]), 2),
+             "forecast": round(float(r["Mean forecast"]), 2),
+             "bias": round(float(r["Bias (forecast − observed)"]), 2),
+             "rmse": round(float(r["RMSE"]), 3)}
+            for _, r in band.iterrows()]
+
+    support = _table("t41d_training_support")
+    if support is not None:
+        out["support"] = [
+            {"band": r["Magnitude band"], "train": int(r["Training n"]),
+             "val": int(r["Validation n"]), "test": int(r["Test n"]),
+             "total": int(r["Total"])}
+            for _, r in support.iterrows()]
+
+    spread = _table("t41e_ensemble_spread")
+    if spread is not None and not spread.empty:
+        col = next((c for c in spread.columns if c.startswith("Observed at or below")),
+                   None)
+        if col:
+            out["spread"] = [
+                {"model": r["Model"], "band": r["Band"], "n": int(r["n"]),
+                 "mean": round(float(r["Mean forecast"]), 2),
+                 "upper": round(float(r[[c for c in spread.columns
+                                         if c.startswith("Tree p")][0]]), 2),
+                 "observed": round(float(r["Observed"]), 2),
+                 "covered": round(float(r[col]), 1)}
+                for _, r in spread.iterrows()]
+
+    shap = _table("t44b_shap_global")
+    if shap is not None:
+        out["shap"] = [
+            {"feature": r["Feature"], "mean_abs": round(float(r["Mean |SHAP|"]), 4),
+             "mean": round(float(r["Mean SHAP"]), 4),
+             "lo": round(float(r["Min SHAP"]), 4),
+             "hi": round(float(r["Max SHAP"]), 4),
+             "share": round(float(r["Share of explained movement (%)"]), 1)}
+            for _, r in shap.head(10).iterrows()]
+        out["shap_total"] = round(float(shap["Mean |SHAP|"].sum()), 3)
+
+    cases = _table("t44c_shap_cases")
+    if cases is not None and not cases.empty:
+        blocks, current = [], None
+        for _, r in cases.iterrows():
+            if isinstance(r["Case"], str) and r["Case"].strip():
+                current = {"title": r["Case"], "rows": []}
+                blocks.append(current)
+            if current is None:
+                continue
+            current["rows"].append(
+                {"feature": r["Feature"],
+                 "value": (None if pd.isna(r["Feature value"])
+                           else round(float(r["Feature value"]), 3)),
+                 "shap": round(float(r["SHAP contribution"]), 3),
+                 "running": round(float(r["Running forecast"]), 3)})
+        out["shap_cases"] = blocks[:1]
+
+    audit = _table("t02_cleaning_audit")
+    dec = _table("t25_decluster_summary")
+    prof = _table("t29_sequence_profile")
+    if audit is not None and dec is not None and prof is not None:
+        num = lambda v: int(str(v).replace(",", ""))
+        raw = num(audit.iloc[0]["Records before"])
+        clean = num(audit.iloc[-1]["Records retained"])
+        dependent = num(dec.loc[dec["Declustering stage"]
+                                .str.contains("Dependent"), "n"].iloc[0])
+        find = lambda key: num(prof.loc[prof["Quantity"].str.contains(key),
+                                        "Value"].iloc[0])
+        out["cleaning"] = [
+            {"label": "Raw PHIVOLCS records", "n": raw, "note": ""},
+            {"label": "Duplicate origins collapsed", "n": clean,
+             "note": f"{raw - clean:,} records were one earthquake reported twice"},
+            {"label": "Independent events", "n": clean - dependent,
+             "note": f"{dependent:,} dependent events removed by Maeda Eq. 1 to 3: "
+                     "aftershocks and swarm members, not precursors"},
+            {"label": "Candidate mainshocks M 5.0 and above",
+             "n": find("Candidate"),
+             "note": f"{clean - dependent - find('Candidate'):,} independent events "
+                     "below the study threshold"},
+            {"label": "Forecast sequences", "n": find("retained"),
+             "note": f"{find('Candidate') - find('retained'):,} windows rejected: "
+                     "too few events, or holding an earthquake as large as the "
+                     "mainshock they were supposed to precede"},
+        ]
+
+    scales = _table("t03b_magnitude_selection")
+    if scales is not None:
+        out["scales"] = [
+            {"rank": int(r["Preference rank"]), "scale": r["Scale"],
+             "measures": r["Measures"],
+             "short": ea.MAGNITUDE_SCALE_SHORT.get(r["Scale"], ""),
+             "reported": int(r["Events reporting it"]),
+             "adopted": int(r["Events where it was adopted"]),
+             "pct": round(float(r["% of catalogue adopted"]), 1)}
+            for _, r in scales.iterrows()]
+
+    windows = _table("t24_maeda_windows")
+    if windows is not None:
+        out["maeda_windows"] = [
+            {"mpre": float(r["Precursor magnitude (Mpre)"]),
+             "l_km": round(float(r["Spatial window L (km)"]), 2),
+             "ta_days": round(float(r["Temporal window ta (days)"]), 2),
+             "cutoff": round(float(r["Magnitude cut-off (Mpre − Md)"]), 1)}
+            for _, r in windows.iterrows()]
+
+    dictionary = _table("t28_feature_dictionary")
+    if dictionary is not None:
+        cols = {c.lower(): c for c in dictionary.columns}
+        out["features"] = [
+            {"name": r[cols.get("feature", dictionary.columns[0])],
+             "category": r.get(cols.get("category", ""), ""),
+             "description": r.get(cols.get("description", ""), "")}
+            for _, r in dictionary.iterrows()]
+
+    return out
+
+
+def seed_sequence(cat_sorted, sequences, idx_test, ea) -> dict:
+    """One real sequence, in the shape the form collects, to open the page with.
+
+    Previously the panel opened on a dropdown of recorded sequences whose
+    epicentre and foreshock list came from different places; one of them put an
+    epicentre 600 km from its own foreshocks. The dropdown is gone at the
+    authors' request, so one sequence is built here from the catalogue itself
+    and both halves necessarily agree.
+
+    The median sequence of the test partition is chosen rather than the most
+    dramatic: a reader should arrive at a typical case, not a cherry-picked one.
+    """
+    pos = list(idx_test)[len(idx_test) // 2]
+    row = sequences.iloc[pos]
+    events = window_events(cat_sorted, row, ea)
+    end = pd.Timestamp(row["MainshockTime"])
+    stamp = lambda t: pd.Timestamp(t).strftime("%Y-%m-%dT%H:%M")
+    return {
+        "when": stamp(end),
+        "lat": round(float(row["MainshockLat"]), 4),
+        "lon": round(float(row["MainshockLon"]), 4),
+        "actual": round(float(row["Target"]), 2),
+        "events": [{"at": stamp(end - pd.Timedelta(days=float(e["before"]))),
+                    "mag": e["mag"], "lat": e["lat"], "lon": e["lon"],
+                    "depth": e["depth"]}
+                   for e in sorted(events, key=lambda e: -e["before"])],
+    }
 
 
 def window_events(cat_sorted, row, ea) -> list:
@@ -519,6 +719,11 @@ def window_events(cat_sorted, row, ea) -> list:
         }
         if has_fault:
             event["dist"] = round(float(cat_sorted["SrcDistKm"].iloc[i]), 6)
+        # The event's own origin time and magnitude scale, carried rather than
+        # reconstructed. Subtracting a rounded `before` from the mainshock time
+        # lands a few microseconds off and will not match the catalogue index.
+        event["when"] = cat_sorted["datetime"].iloc[i].isoformat(sep=" ")
+        event["scale"] = str(cat_sorted["MagScale"].iloc[i])
         out.append(event)
     return out
 
